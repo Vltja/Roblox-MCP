@@ -29,9 +29,10 @@ This implementation is built for **productivity, safety, and token efficiency**.
 | **Stability** | Proof of Concept | Experimental | **Production Ready (Optimized Task Scheduling)** |
 
 ### Key Advantages:
-1.  **Smart `editScript` Workflow:** Instead of re-sending entire files, our AI uses a pinpoint search-and-replace method. This preserves your indentation and is much faster.
-2.  **Massive Token Savings:** Using the `multi` tool, the AI can chain dozens of commands (e.g., "Build a stadium with 100 seats and light it up") into a single request.
-3.  **Local Firewall:** The built-in Express Dashboard acts as a security layer. You see every command before it executes and can block anything suspicious.
+1.  **Massive Token Savings & Precision:** Our `editScript` pinpoint search-and-replace method allows the AI to modify specific lines without re-sending or overwriting entire files. This saves thousands of tokens and prevents accidental code destruction.
+2.  **Context Efficiency (Intuitive Discovery):** Tools like `scriptSearch`, `readLine`, and `tree` allow the AI to "feel" your project intuitively. It can instantly find any script, variable, or object without wasting dozens of tool calls just to "find where things are."
+3.  **The `multi` Tool Power:** Chaining dozens of actions (e.g., "Build a stadium with 100 seats and light it up") into a single request drastically reduces latency and API costs while making complex automation reliable.
+4.  **Local Firewall:** The built-in Express Dashboard acts as a security layer. You see every command before it executes and can block anything suspicious.
 
 ---
 
