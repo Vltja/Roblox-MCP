@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "roblox-studio": {
+      "command": "node",
+      "args": ["C:\\Users\\DEIN_USERNAME\\roblox-studio-mcp\\mcp-server.js"],
+      "env": {}
+    }
+  }
+}

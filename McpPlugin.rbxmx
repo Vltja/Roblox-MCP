@@ -1,0 +1,2551 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+	<Meta name="ExplicitAutoJoints">true</Meta>
+	<External>null</External>
+	<External>nil</External>
+	<Item class="Folder" referent="RBX6E5B8D0362984E1FAB2060E1AA044C9E">
+		<Properties>
+			<BinaryString name="AttributesSerialize"></BinaryString>
+			<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+			<bool name="DefinesCapabilities">false</bool>
+			<string name="Name">MCP plugin</string>
+			<int64 name="SourceAssetId">-1</int64>
+			<BinaryString name="Tags"></BinaryString>
+		</Properties>
+		<Item class="ModuleScript" referent="RBX4E4264F4DD4745829C1F04449BEF6079">
+			<Properties>
+				<Content name="LinkedSource"><null></null></Content>
+				<ProtectedString name="Source"><![CDATA[local UIManager = {}
+UIManager.gui = nil
+UIManager.statusLabel = nil
+UIManager.bridgeStatusLabel = nil
+UIManager.logContainer = nil -- NEU: Container fuer Logs
+UIManager.applyButton = nil
+UIManager.connectButton = nil
+UIManager.isConnected = false
+UIManager.onConnectionToggle = nil
+
+-- Funktion zur Bridge-Erkennung per Heartbeat
+local function checkBridgePlugin()
+	local heartbeat = shared.MCPBridgeHeartbeat or 0
+	local currentTime = tick()
+
+	if (currentTime - heartbeat) <= 3.0 then
+		return true
+	else
+		return false
+	end
+end
+
+function UIManager.createUI(plugin)
+	local toolbar = plugin:CreateToolbar("RobloxMCP Premium")
+	local toggleButton = toolbar:CreateButton("RobloxMCP Premium", "Zeige RobloxMCP Premium Plugin Status", "rbxassetid://4458901886")
+
+	local widgetInfo = DockWidgetPluginGuiInfo.new(
+		Enum.InitialDockState.Float,
+		false,
+		false,
+		320,
+		450, -- Etwas hoeher fuer Logs
+		320,
+		400
+	)
+
+	local widget = plugin:CreateDockWidgetPluginGui("RobloxMCPPremiumWidget", widgetInfo)
+	widget.Title = "💎 RobloxMCP Premium"
+	widget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(1, 0, 1, 0)
+	frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	frame.BorderSizePixel = 0
+	frame.Parent = widget
+
+	-- Header Area
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -20, 0, 30)
+	title.Position = UDim2.new(0, 10, 0, 10)
+	title.Text = "💎 RobloxMCP Premium"
+	title.TextColor3 = Color3.new(1, 1, 1)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.SourceSansBold
+	title.TextSize = 18
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = frame
+
+	local versionLabel = Instance.new("TextLabel")
+	versionLabel.Size = UDim2.new(1, -20, 0, 20)
+	versionLabel.Position = UDim2.new(0, 10, 0, 45)
+	versionLabel.Text = "Version: 2.1.0 (Log Update)"
+	versionLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+	versionLabel.BackgroundTransparency = 1
+	versionLabel.Font = Enum.Font.SourceSans
+	versionLabel.TextSize = 14
+	versionLabel.TextXAlignment = Enum.TextXAlignment.Left
+	versionLabel.Parent = frame
+
+	-- Status Area
+	local bridgeStatusLabel = Instance.new("TextLabel")
+	bridgeStatusLabel.Size = UDim2.new(1, -90, 0, 20)
+	bridgeStatusLabel.Position = UDim2.new(0, 10, 0, 70)
+	bridgeStatusLabel.Text = "Bridge: ⚪ Pruefe..."
+	bridgeStatusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+	bridgeStatusLabel.BackgroundTransparency = 1
+	bridgeStatusLabel.Font = Enum.Font.SourceSans
+	bridgeStatusLabel.TextSize = 14
+	bridgeStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+	bridgeStatusLabel.Parent = frame
+
+	local refreshButton = Instance.new("TextButton")
+	refreshButton.Size = UDim2.new(0, 80, 0, 20)
+	refreshButton.Position = UDim2.new(1, -90, 0, 70)
+	refreshButton.Text = "🔄 Refresh"
+	refreshButton.TextColor3 = Color3.new(1, 1, 1)
+	refreshButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+	refreshButton.BorderSizePixel = 0
+	refreshButton.Font = Enum.Font.SourceSans
+	refreshButton.TextSize = 12
+	refreshButton.Parent = frame
+
+	local statusLabel = Instance.new("TextLabel")
+	statusLabel.Size = UDim2.new(1, -20, 0, 20)
+	statusLabel.Position = UDim2.new(0, 10, 0, 95)
+	statusLabel.Text = "Server: ⚪ Unbekannt"
+	statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+	statusLabel.BackgroundTransparency = 1
+	statusLabel.Font = Enum.Font.SourceSans
+	statusLabel.TextSize = 14
+	statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+	statusLabel.Parent = frame
+
+	-- Connection Area
+	local connectButton = Instance.new("TextButton")
+	connectButton.Size = UDim2.new(1, -20, 0, 30)
+	connectButton.Position = UDim2.new(0, 10, 0, 125)
+	connectButton.Text = "🔴 Getrennt - Klicken zum Verbinden"
+	connectButton.TextColor3 = Color3.new(1, 1, 1)
+	connectButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+	connectButton.BorderSizePixel = 0
+	connectButton.Font = Enum.Font.SourceSansBold
+	connectButton.TextSize = 14
+	connectButton.Parent = frame
+
+	-- Log Area Title
+	local logTitle = Instance.new("TextLabel")
+	logTitle.Size = UDim2.new(1, -20, 0, 20)
+	logTitle.Position = UDim2.new(0, 10, 0, 165)
+	logTitle.Text = "📋 Plugin Logs:"
+	logTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
+	logTitle.BackgroundTransparency = 1
+	logTitle.Font = Enum.Font.SourceSansBold
+	logTitle.TextSize = 14
+	logTitle.TextXAlignment = Enum.TextXAlignment.Left
+	logTitle.Parent = frame
+
+	-- Log Container (ScrollingFrame)
+	local logContainer = Instance.new("ScrollingFrame")
+	logContainer.Size = UDim2.new(1, -20, 1, -195) -- Rest der Hoehe nutzen
+	logContainer.Position = UDim2.new(0, 10, 0, 185)
+	logContainer.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	logContainer.BorderSizePixel = 1
+	logContainer.BorderColor3 = Color3.fromRGB(60, 60, 60)
+	logContainer.ScrollBarThickness = 6
+	logContainer.CanvasSize = UDim2.new(0, 0, 0, 0) -- Auto-resizing later
+	logContainer.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	logContainer.Parent = frame
+
+	local layout = Instance.new("UIListLayout")
+	layout.Parent = logContainer
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Padding = UDim.new(0, 2)
+
+	-- Connect Logic
+	toggleButton.Click:Connect(function()
+		widget.Enabled = not widget.Enabled
+		toggleButton:SetActive(widget.Enabled)
+	end)
+
+	refreshButton.MouseButton1Click:Connect(function()
+		UIManager.addLog("Pruefe Bridge Status...", "info")
+		local bridgeInstalled = checkBridgePlugin()
+		UIManager.updateBridgeStatus(bridgeInstalled)
+	end)
+
+	connectButton.MouseButton1Click:Connect(function()
+		if not UIManager.isConnected then
+			local bridgeInstalled = checkBridgePlugin()
+			if not bridgeInstalled then
+				UIManager.addLog("Bridge Plugin fehlt! Bitte installieren.", "error")
+				UIManager.updateBridgeStatus(false)
+				return
+			else
+				UIManager.updateBridgeStatus(true)
+			end
+		end
+
+		UIManager.isConnected = not UIManager.isConnected
+		if UIManager.isConnected then
+			connectButton.Text = "🟢 Verbunden - Klicken zum Trennen"
+			connectButton.BackgroundColor3 = Color3.fromRGB(60, 200, 60)
+			UIManager.addLog("Verbindung aktiviert.", "success")
+		else
+			connectButton.Text = "🔴 Getrennt - Klicken zum Verbinden"
+			connectButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+			UIManager.addLog("Verbindung getrennt.", "warn")
+		end
+
+		if UIManager.onConnectionToggle then
+			UIManager.onConnectionToggle(UIManager.isConnected)
+		end
+	end)
+
+	UIManager.gui = widget
+	UIManager.statusLabel = statusLabel
+	UIManager.bridgeStatusLabel = bridgeStatusLabel
+	UIManager.connectButton = connectButton
+	UIManager.logContainer = logContainer
+
+	return widget
+end
+
+function UIManager.updateConnectionStatus(isConnected)
+	if UIManager.statusLabel then
+		if isConnected then
+			UIManager.statusLabel.Text = "Server: ✅ Verbunden"
+			UIManager.statusLabel.TextColor3 = Color3.fromRGB(100, 200, 100)
+		else
+			UIManager.statusLabel.Text = "Server: ❌ Getrennt"
+			UIManager.statusLabel.TextColor3 = Color3.fromRGB(200, 100, 100)
+		end
+	end
+end
+
+function UIManager.updateBridgeStatus(isInstalled)
+	if UIManager.bridgeStatusLabel then
+		if isInstalled then
+			UIManager.bridgeStatusLabel.Text = "Bridge: ✅ Installiert"
+			UIManager.bridgeStatusLabel.TextColor3 = Color3.fromRGB(100, 200, 100)
+		else
+			UIManager.bridgeStatusLabel.Text = "Bridge: ❌ FEHLT!"
+			UIManager.bridgeStatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+		end
+	end
+end
+
+-- Neue Logging Funktion
+function UIManager.addLog(message, type)
+	if not UIManager.logContainer then return end
+
+	local color = Color3.new(1, 1, 1) -- Default white
+	if type == "error" then color = Color3.fromRGB(255, 100, 100) end
+	if type == "warn" then color = Color3.fromRGB(255, 200, 100) end
+	if type == "success" then color = Color3.fromRGB(100, 255, 100) end
+	if type == "info" then color = Color3.fromRGB(150, 200, 255) end
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -4, 0, 0) -- Hoehe automatisch
+	label.AutomaticSize = Enum.AutomaticSize.Y
+	label.BackgroundTransparency = 1
+	label.Text = "[" .. os.date("%H:%M:%S") .. "] " .. message
+	label.TextColor3 = color
+	label.Font = Enum.Font.Code
+	label.TextSize = 12
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextWrapped = true
+	label.Parent = UIManager.logContainer
+
+	-- Auto-Scroll to bottom
+	UIManager.logContainer.CanvasPosition = Vector2.new(0, 999999)
+
+	-- Limit Logs (optional, um Memory zu sparen)
+	local children = UIManager.logContainer:GetChildren()
+	if #children > 100 then -- Behalte 100 Logs + UIListLayout
+		children[2]:Destroy() -- children[1] ist oft Layout, also 2 loeschen (oder sicherheitshalber nach Typ checken)
+	end
+end
+
+return UIManager]]></ProtectedString>
+				<string name="ScriptGuid">{83425D58-F6E4-4B9E-A077-26745D14F605}</string>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+				<bool name="DefinesCapabilities">false</bool>
+				<string name="Name">UIManager</string>
+				<int64 name="SourceAssetId">-1</int64>
+				<BinaryString name="Tags"></BinaryString>
+			</Properties>
+		</Item>
+		<Item class="Script" referent="RBXCA4481FF1C534E788094B69696FD1966">
+			<Properties>
+				<ProtectedString name="Source"><![CDATA[local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+local Helpers = require(script.Parent.Helpers)
+local CommandQueue = require(script.Parent.CommandQueue)
+local UIManager = require(script.Parent.UIManager)
+
+-- Generators
+local TreeGenerator = require(script.Parent.Generators.TreeGenerator)
+local CreateGenerator = require(script.Parent.Generators.CreateGenerator)
+local GetGenerator = require(script.Parent.Generators.GetGenerator)
+local ModifyObjectGenerator = require(script.Parent.Generators.ModifyObjectGenerator)
+local DeleteGenerator = require(script.Parent.Generators.DeleteGenerator)
+local CopyGenerator = require(script.Parent.Generators.CopyGenerator)
+local ReadLineGenerator = require(script.Parent.Generators.ReadLineGenerator)
+local DeleteLinesGenerator = require(script.Parent.Generators.DeleteLinesGenerator)
+local InsertLinesGenerator = require(script.Parent.Generators.InsertLinesGenerator)
+local GetScriptInfoGenerator = require(script.Parent.Generators.GetScriptInfoGenerator)
+local ScriptSearchGenerator = require(script.Parent.Generators.ScriptSearchGenerator)
+local ScriptSearchOnlyGenerator = require(script.Parent.Generators.ScriptSearchOnlyGenerator)
+local EditScriptGenerator = require(script.Parent.Generators.EditScriptGenerator)
+local ConvertScriptGenerator = require(script.Parent.Generators.ConvertScriptGenerator) -- NEU
+
+-- Configuration
+local SERVER_URL = "http://localhost:3000"
+local POLL_INTERVAL = 0.5 -- Sekunden
+local lastPollTime = 0
+local isPolling = false
+
+-- Logging Helper (Log to Widget AND Output)
+local function log(message, type)
+	type = type or "info"
+
+	-- 1. Log ins Widget (immer)
+	UIManager.addLog(message, type)
+
+	-- 2. Log in die Roblox Konsole (nur Warnungen/Fehler oder Start-Infos)
+	if type == "error" then
+		warn("[RobloxMCP ERROR] " .. message)
+	elseif type == "warn" then
+		warn("[RobloxMCP WARN] " .. message)
+	elseif message:match("^Plugin gestartet") or message:match("verbunden") then
+		print("[RobloxMCP] " .. message)
+	end
+end
+
+-- Shared Storage Setup
+if not shared.RobloxStudioMCP_Premium then
+	shared.RobloxStudioMCP_Premium = {}
+end
+
+shared.RobloxStudioMCP_Premium.Version = "2.1.0"
+shared.RobloxStudioMCP_Premium.Tools = {
+	tree = true, create = true, get = true, modifyObject = true,
+	delete = true, copy = true, readLine = true, deleteLines = true,
+	insertLines = true, getScriptInfo = true, scriptSearch = true,
+	scriptSearchOnly = true, editScript = true, convertScript = true
+}
+
+-- Bridge Communication Wrapper
+local function sendToBridge(luaCode, id)
+	shared.BridgeExecutor = {
+		id = id,
+		code = luaCode,
+		timestamp = tick()
+	}
+	log("Sende an Bridge (ID: " .. id:sub(1,8) .. ")", "info")
+end
+
+local function checkBridgeResult(id)
+	local result = shared.BridgeResult
+	if result and result.id == id then
+		shared.BridgeResult = nil -- Consume result
+		return true, result.success, result.output
+	end
+	return false, nil, nil
+end
+
+-- Execute Tool Logic
+local function executeTool(toolName, args, id)
+	log("Tool ausfuehren: " .. toolName, "info")
+
+	local luaCode = nil
+	local generatorMap = {
+		tree = TreeGenerator,
+		create = CreateGenerator,
+		get = GetGenerator,
+		modifyObject = ModifyObjectGenerator,
+		delete = DeleteGenerator,
+		copy = CopyGenerator,
+		readLine = ReadLineGenerator,
+		deleteLines = DeleteLinesGenerator,
+		insertLines = InsertLinesGenerator,
+		getScriptInfo = GetScriptInfoGenerator,
+		scriptSearch = ScriptSearchGenerator,
+		scriptSearchOnly = ScriptSearchOnlyGenerator,
+		editScript = EditScriptGenerator,
+		convertScript = ConvertScriptGenerator
+	}
+
+	local generator = generatorMap[toolName]
+	if generator then
+		luaCode = generator.generate(args)
+	else
+		log("Unbekanntes Tool: " .. toolName, "error")
+		return
+	end
+
+	if luaCode then
+		sendToBridge(luaCode, id)
+
+		-- Warte auf Ergebnis (Non-Blocking im Coroutine)
+		spawn(function()
+			local startTime = tick()
+			while (tick() - startTime) < 120 do -- 120s Timeout
+				local received, success, output = checkBridgeResult(id)
+				if received then
+					log("Ergebnis empfangen: " .. (success and "Success" or "Failure"), success and "success" or "error")
+
+					-- Sende Ergebnis an Server
+					local resultPayload = id .. "\n" .. (output or "")
+
+					pcall(function()
+						HttpService:PostAsync(
+							SERVER_URL .. "/result",
+							resultPayload,
+							Enum.HttpContentType.TextPlain
+						)
+					end)
+					return
+				end
+				wait(0.1)
+			end
+			log("Timeout beim Warten auf Bridge Result (ID: " .. id:sub(1,8) .. ")", "error")
+		end)
+	end
+end
+
+-- Long Polling Function
+local function pollServer()
+	if isPolling then return end
+	isPolling = true
+
+	local success, response = pcall(function()
+		return HttpService:GetAsync(SERVER_URL .. "/command")
+	end)
+
+	if success then
+		-- Update UI Status
+		UIManager.updateConnectionStatus(true)
+
+		local data = nil
+		pcall(function() data = HttpService:JSONDecode(response) end)
+
+		if data and data.tool then
+			log("Kommando erhalten: " .. data.tool, "info")
+			executeTool(data.tool, data.args, data.id)
+		end
+	else
+		UIManager.updateConnectionStatus(false)
+		-- Silent fail fuer Polling, nur Log im Widget wenn laenger weg
+		-- log("Verbindung verloren...", "warn") 
+	end
+
+	isPolling = false
+end
+
+-- Init Plugin
+local function init(plugin)
+	local widget = UIManager.createUI(plugin)
+
+	UIManager.onConnectionToggle = function(enabled)
+		if enabled then
+			log("Verbindung gestartet.", "success")
+		else
+			log("Verbindung gestoppt.", "warn")
+		end
+	end
+
+	-- Main Loop
+	RunService.Heartbeat:Connect(function()
+		-- 1. Nur im Edit-Modus laufen (nicht im Play-Mode!)
+		if not RunService:IsEdit() then return end
+
+		-- 2. Nur wenn im UI "Verbunden" geklickt wurde
+		if not UIManager.isConnected then return end
+
+		-- 3. Poll Interval
+		if (tick() - lastPollTime) >= POLL_INTERVAL then
+			lastPollTime = tick()
+			spawn(pollServer)
+		end
+	end)
+
+	log("Plugin gestartet - Version " .. shared.RobloxStudioMCP_Premium.Version, "success")
+end
+
+return init
+]]></ProtectedString>
+				<bool name="Disabled">false</bool>
+				<Content name="LinkedSource"><null></null></Content>
+				<token name="RunContext">0</token>
+				<string name="ScriptGuid">{AD67C121-EE4F-48B4-92F2-EC92DF206704}</string>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+				<bool name="DefinesCapabilities">false</bool>
+				<string name="Name">MainScript</string>
+				<int64 name="SourceAssetId">-1</int64>
+				<BinaryString name="Tags"></BinaryString>
+			</Properties>
+		</Item>
+		<Item class="ModuleScript" referent="RBXEDF3243A6AC44355B7FF1467B35D6D53">
+			<Properties>
+				<Content name="LinkedSource"><null></null></Content>
+				<ProtectedString name="Source"><![CDATA[local HttpService = game:GetService("HttpService")
+
+local HTTPManager = {}
+
+-- Helper function to sanitize output for JSON encoding
+function HTTPManager.sanitizeOutput(output)
+	if type(output) ~= "string" then
+		-- Convert non-string outputs to string
+		output = tostring(output)
+	end
+
+	-- Replace problematic characters that can break JSON
+	-- Remove or escape control characters (except \n, \t, \r)
+	output = string.gsub(output, "[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "")
+
+	-- Ensure proper Unicode handling by removing invalid UTF-8 sequences
+	-- This helps prevent "Can't convert to JSON" errors
+	output = string.gsub(output, "[\xC0-\xC4][\x80-\xBF]", "?")
+	output = string.gsub(output, "[\xE0-\xEF][\x80-\xBF][\x80-\xBF]", "?")
+	output = string.gsub(output, "[\xF0-\xF4][\x80-\xBF][\x80-\xBF][\x80-\xBF]", "?")
+
+	-- Truncate extremely long outputs to prevent JSON encoding issues
+	if #output > 1000000 then  -- 1MB limit
+		output = string.sub(output, 1, 1000000) .. "\n[OUTPUT TRUNCATED - Too large]"
+	end
+
+	return output
+end
+
+HTTPManager.serverURL = "http://localhost:3000"
+HTTPManager.isConnected = false
+HTTPManager.isEnabled = false
+HTTPManager.lastPingTime = 0
+HTTPManager.PING_INTERVAL = 5
+
+function HTTPManager.setServerURL(url)
+	HTTPManager.serverURL = url
+	shared.RobloxStudioMCP_ServerURL = url
+	print("[?? Premium] Server URL geändert: " .. url)
+end
+
+function HTTPManager.getServerURL()
+	return shared.RobloxStudioMCP_ServerURL or HTTPManager.serverURL
+end
+
+function HTTPManager.enable()
+	HTTPManager.isEnabled = true
+	print("[?? Premium] HTTP Polling aktiviert")
+end
+
+function HTTPManager.disable()
+	HTTPManager.isEnabled = false
+	HTTPManager.isConnected = false
+	print("[?? Premium] HTTP Polling deaktiviert")
+end
+
+function HTTPManager.isPollingEnabled()
+	return HTTPManager.isEnabled
+end
+
+function HTTPManager.ping()
+	local url = HTTPManager.getServerURL()
+	local success, response = pcall(function()
+		return HttpService:GetAsync(url .. "/ping", true)
+	end)
+
+	if success then
+		local data = HttpService:JSONDecode(response)
+		HTTPManager.isConnected = data.pong == true
+	else
+		HTTPManager.isConnected = false
+	end
+
+	HTTPManager.lastPingTime = tick()
+	return HTTPManager.isConnected
+end
+
+function HTTPManager.pollCommand()
+	if not HTTPManager.isEnabled then
+		return nil
+	end
+
+	local url = HTTPManager.getServerURL()
+	local success, response = pcall(function()
+		return HttpService:GetAsync(url .. "/command", true)
+	end)
+
+	if not success then
+		return nil
+	end
+
+	local data = HttpService:JSONDecode(response)
+	if data.tool and data.tool ~= "null" then
+		return data
+	end
+
+	return nil
+end
+
+function HTTPManager.sendResult(commandId, output)
+	local url = HTTPManager.getServerURL()
+
+	-- Vereinfacht: Sende direkten String mit einfacher ID-Kennzeichnung
+	local payload = commandId .. "\n" .. output
+
+	print("[?? Premium] Sende Ergebnis an: " .. url .. "/result")
+	print("[?? Premium] Payload (truncated): " .. string.sub(payload, 1, 200) .. "...")
+
+	local success, response = pcall(function()
+		return HttpService:PostAsync(url .. "/result", payload, Enum.HttpContentType.TextPlain)
+	end)
+
+	if success then
+		print("[?? Premium] ✅ Ergebnis erfolgreich gesendet (ID: " .. commandId .. ")")
+		print("[?? Premium] Response: " .. tostring(response))
+	else
+		print("[?? Premium] ❌ FEHLER beim Senden des Ergebnisses!")
+		print("[?? Premium] Fehler: " .. tostring(response))
+		print("[?? Premium] URL: " .. url .. "/result")
+	end
+end
+
+function HTTPManager.startPinging(callback)
+	spawn(function()
+		while true do
+			if HTTPManager.isEnabled then
+				local currentTime = tick()
+				if currentTime - HTTPManager.lastPingTime >= HTTPManager.PING_INTERVAL then
+					local connected = HTTPManager.ping()
+					if callback then
+						callback(connected)
+					end
+				end
+			else
+				if callback then
+					callback(false)
+				end
+			end
+			wait(1)
+		end
+	end)
+end
+
+return HTTPManager
+]]></ProtectedString>
+				<string name="ScriptGuid">{F95C53D5-09E0-482F-8D0B-1E379FA2FA0A}</string>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+				<bool name="DefinesCapabilities">false</bool>
+				<string name="Name">HTTPManager</string>
+				<int64 name="SourceAssetId">-1</int64>
+				<BinaryString name="Tags"></BinaryString>
+			</Properties>
+		</Item>
+		<Item class="ModuleScript" referent="RBX98C9256A943E4D969305EA26AC58DA4E">
+			<Properties>
+				<Content name="LinkedSource"><null></null></Content>
+				<ProtectedString name="Source"><![CDATA[-- Helpers Module
+local Helpers = {}
+
+-- safeQuote() entfernt - nicht mehr benötigt für vereinfachtes System
+
+-- DEPRECATED: Alte unsichere Methode (fehlen viele Escape-Cases)
+function Helpers.escapeLua(str)
+	if type(str) ~= "string" then return str end
+	return str:gsub("\\", "\\\\"):gsub('"', '\\"'):gsub("\n", "\\n")
+end
+
+-- ✅ Pattern Escaping für string.gsub() - Escape alle Lua Pattern-Magic-Zeichen
+-- Wichtig für editScript wenn Sonderzeichen wie []{}=)(/.*+-? ersetzt werden
+function Helpers.escapePattern(str)
+	if type(str) ~= "string" then return tostring(str) end
+	return str:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+end
+
+-- ✅ JSON Arrays zu Lua Tables konvertieren für create Tool
+-- Konvertiert [1,2,3] zu {1,2,3} - wichtig für JavaScript-Style Arrays
+function Helpers.convertJsonArraysToLuaTables(str)
+	if type(str) ~= "string" then return tostring(str) end
+
+	-- Rekursiv konvertieren für verschachtelte Arrays
+	local function convertRecursively(input)
+		-- Ersetze alle balanced brackets [content] mit {content}
+		return input:gsub("%b[]", function(arrayContent)
+			-- Entferne äußere eckige Klammern
+			local content = arrayContent:sub(2, -2)
+
+			-- Konvertiere verschachtelte Arrays zuerst
+			content = convertRecursively(content)
+
+			-- Ersetze durch geschweifte Klammern
+			return "{" .. content .. "}"
+		end)
+	end
+
+	return convertRecursively(str)
+end
+
+-- ✅ Robuste Source-String Verarbeitung für create Tool
+-- Kombiniert Array-Konvertierung und sicheres Lua-String-Escaping
+function Helpers.processSourceString(source)
+	if type(source) ~= "string" then
+		return string.format("%q", tostring(source))
+	end
+
+	-- 1. JSON Arrays zu Lua Tables konvertieren
+	local processed = Helpers.convertJsonArraysToLuaTables(source)
+
+	-- 2. Sicherer Lua-String mit %q escaping (wie editScriptGenerator)
+	return string.format("%q", processed)
+end
+
+-- ✅ Human Readable Format Verarbeitung für server-seitige Strings
+-- Simuliert JavaScript string.replace(/\\n/g, '\n') für Lua-Kompatibilität
+function Helpers.applyHumanReadableFormat(str)
+	if type(str) ~= "string" then return tostring(str) end
+
+	-- Ersetze \n Escape-Sequenzen durch echte Zeilenumbrüche
+	return str:gsub("\\n", "\n")
+end
+
+-- base64Decode() entfernt - nicht mehr benötigt für vereinfachtes System
+-- Express Server handled Base64 für MCP Transport nur
+
+return Helpers]]></ProtectedString>
+				<string name="ScriptGuid">{DD2BDB88-C0BE-4BF9-8A70-74BF53C8A48C}</string>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+				<bool name="DefinesCapabilities">false</bool>
+				<string name="Name">Helpers</string>
+				<int64 name="SourceAssetId">-1</int64>
+				<BinaryString name="Tags"></BinaryString>
+			</Properties>
+		</Item>
+		<Item class="ModuleScript" referent="RBX1D581E82044E42F1998EBA297F80CBEF">
+			<Properties>
+				<Content name="LinkedSource"><null></null></Content>
+				<ProtectedString name="Source"><![CDATA[local CommandQueue = {}
+function CommandQueue.sendToBridge(commandId, toolName, args, generatedCode)
+	print("[?? Premium] ?? Sende an Bridge: ID " .. commandId)
+
+	shared.BridgeExecutor = {
+		id = commandId,
+		tool = toolName,
+		args = args,
+		code = generatedCode,
+		timestamp = tick()
+	}
+end
+function CommandQueue.waitForResult(commandId, timeout)
+	timeout = timeout or 120
+	local startTime = tick()
+
+	while tick() - startTime < timeout do
+		local result = shared.BridgeResult
+
+		if result and result.id == commandId then
+			print("[?? Premium] ?? Ergebnis empfangen: ID " .. commandId)
+
+			-- Clear result
+			shared.BridgeResult = nil
+
+			return result.success, result.output
+		end
+
+		wait(0.01) -- 10ms statt 100ms - Optimiert für Multi-Tool Performance!
+	end
+
+	return false, "[ERROR] Timeout: Keine Antwort von Bridge Plugin nach " .. timeout .. "s"
+end
+function CommandQueue.executeCommand(commandId, toolName, args, generateLuaFunc)
+	print("\n" .. string.rep("=", 60))
+	print("[?? Premium] ?? Neue Anfrage empfangen")
+	print("  ID: " .. commandId)
+	print("  Tool: " .. toolName)
+	print(string.rep("=", 60))
+
+	-- Generate Lua code
+	print("[?? Premium] ?? Generiere Lua-Code...")
+	local luaCode = generateLuaFunc(toolName, args)
+
+	if not luaCode or luaCode == "" then
+		local errorMsg = "[ERROR] Konnte keinen Lua-Code generieren für Tool: " .. toolName
+		print(errorMsg)
+		return false, errorMsg
+	end
+
+	print("[?? Premium] ? Lua generiert (" .. #luaCode .. " Zeichen)")
+
+	-- Send to Bridge
+	CommandQueue.sendToBridge(commandId, toolName, args, luaCode)
+
+	-- Wait for result
+	print("[?? Premium] ? Warte auf Ergebnis...")
+	local success, output = CommandQueue.waitForResult(commandId)
+
+	if success then
+		print("[?? Premium] ? Ausführung erfolgreich")
+	else
+		print("[?? Premium] ? Fehler: " .. output)
+	end
+
+	print(string.rep("=", 60) .. "\n")
+
+	return success, output
+end
+return CommandQueue]]></ProtectedString>
+				<string name="ScriptGuid">{40C50BA6-EC87-42B4-9036-760488C8C89B}</string>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+				<bool name="DefinesCapabilities">false</bool>
+				<string name="Name">CommandQueue</string>
+				<int64 name="SourceAssetId">-1</int64>
+				<BinaryString name="Tags"></BinaryString>
+			</Properties>
+		</Item>
+		<Item class="Folder" referent="RBX10F202079C1F466A82E74849C70F3716">
+			<Properties>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+				<bool name="DefinesCapabilities">false</bool>
+				<string name="Name">Generators</string>
+				<int64 name="SourceAssetId">-1</int64>
+				<BinaryString name="Tags"></BinaryString>
+			</Properties>
+			<Item class="ModuleScript" referent="RBXA03D3C76690244A092EBC414B817C835">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[local Helpers = require(script.Parent.Parent.Helpers)
+
+local ConvertScriptGenerator = {}
+
+function ConvertScriptGenerator.generate(args)
+	local path = args.path
+	local targetType = args.targetType
+
+	-- Validierung
+	if not path or path == "" then return 'print("[ERROR] Pfad fehlt")' end
+	if not targetType or targetType == "" then return 'print("[ERROR] targetType fehlt")' end
+
+	-- Erlaubte Typen
+	if targetType ~= "Script" and targetType ~= "LocalScript" and targetType ~= "ModuleScript" then
+		return 'print("[ERROR] Ungueltiger Ziel-Typ: ' .. targetType .. ' (Erlaubt: Script, LocalScript, ModuleScript)")'
+	end
+
+	local code = string.format([[
+local ScriptEditorService = game:GetService("ScriptEditorService")
+
+local function getObjectByPath(pathStr)
+    local parts = {}
+    for part in string.gmatch(pathStr, "[^.]+") do table.insert(parts, part) end
+    local current = nil
+    if parts[1] == "workspace" then current = workspace
+    elseif parts[1] == "game" then current = game
+    else pcall(function() current = game:GetService(parts[1]) end) end
+    for i = 2, #parts do
+        if current then current = current:FindFirstChild(parts[i]) end
+    end
+    return current
+end
+
+local path = %q
+local targetType = %q
+
+local oldScript = getObjectByPath(path)
+if not oldScript then
+    print("[ERROR] Skript nicht gefunden: " .. path)
+    return
+end
+
+if not oldScript:IsA("LuaSourceContainer") then
+    print("[ERROR] Objekt ist kein Skript: " .. oldScript.ClassName)
+    return
+end
+
+if oldScript.ClassName == targetType then
+    print("[WARNING] Skript ist bereits ein " .. targetType)
+    return
+end
+
+print("[INFO] Konvertiere " .. oldScript.Name .. " (" .. oldScript.ClassName .. ") zu " .. targetType .. "...")
+
+-- 1. Daten sichern
+local source = oldScript.Source
+local name = oldScript.Name
+local parent = oldScript.Parent
+local archivable = oldScript.Archivable
+local enabled = true
+if oldScript:IsA("Script") or oldScript:IsA("LocalScript") then
+    enabled = oldScript.Enabled
+end
+
+-- Attribute und Tags sichern
+local attributes = oldScript:GetAttributes()
+local tags = game:GetService("CollectionService"):GetTags(oldScript)
+
+-- 2. Neues Skript erstellen
+local newScript = Instance.new(targetType)
+newScript.Name = name .. "_CONVERTING" -- Temp Name um Konflikte zu vermeiden
+newScript.Source = source
+
+-- Properties wiederherstellen
+if newScript:IsA("Script") or newScript:IsA("LocalScript") then
+    newScript.Enabled = enabled
+end
+newScript.Archivable = archivable
+
+-- Attribute wiederherstellen
+for k, v in pairs(attributes) do
+    newScript:SetAttribute(k, v)
+end
+
+-- Tags wiederherstellen
+for _, tag in ipairs(tags) do
+    game:GetService("CollectionService"):AddTag(newScript, tag)
+end
+
+-- 3. Kinder verschieben
+for _, child in ipairs(oldScript:GetChildren()) do
+    child.Parent = newScript
+end
+
+-- 4. Austausch vornehmen
+newScript.Parent = parent
+oldScript:Destroy()
+newScript.Name = name -- Richtigen Namen setzen
+
+print("[SUCCESS] Konvertierung erfolgreich: " .. newScript:GetFullName())
+]], path, targetType)
+
+	return code
+end
+
+return ConvertScriptGenerator]]></ProtectedString>
+					<string name="ScriptGuid">{BFD1AB52-8037-4770-A19A-F0D27FACACCC}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">ConvertScriptGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBXFAF9C869E3064B62B3F160F5BD410E62">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[-- =========================================================
+-- RobloxMCP Copy Generator v1.1
+-- =========================================================
+
+local CopyGenerator = {}
+
+function CopyGenerator.generate(args)
+	local sourcePath = args.sourcePath
+	local targetPath = args.targetPath
+	local newName = args.newName
+
+	-- Validate required parameters
+	if not sourcePath or sourcePath == "" then
+		return 'print("[ERROR] Copy: sourcePath ist erforderlich")'
+	end
+
+	if not targetPath or targetPath == "" then
+		return 'print("[ERROR] Copy: targetPath ist erforderlich")'
+	end
+
+	-- Generate Lua code
+	local code = string.format([[
+local function getObjectByPath(pathStr)
+    local parts = {}
+    for part in string.gmatch(pathStr, "[^.]+") do table.insert(parts, part) end
+    if #parts == 0 then return nil end
+
+    local current = nil
+    if parts[1] == "workspace" then current = workspace
+    elseif parts[1] == "game" then current = game
+    else pcall(function() current = game:GetService(parts[1]) end) end
+    
+    for i = 2, #parts do
+        if current then current = current:FindFirstChild(parts[i]) end
+    end
+    return current
+end
+
+local sourcePath = %q
+local targetPath = %q
+local newName = %q
+
+print("[COPY] Kopiere Objekt von " .. sourcePath .. " nach " .. targetPath)
+
+local sourceObject = getObjectByPath(sourcePath)
+if not sourceObject then
+    print("[ERROR] Quell-Objekt nicht gefunden: " .. sourcePath)
+    return
+end
+
+local targetParent = getObjectByPath(targetPath)
+if not targetParent then
+    print("[ERROR] Ziel-Parent nicht gefunden: " .. targetPath)
+    return
+end
+
+-- Validate Target: Can it hold children?
+local validContainer = targetParent:IsA("Folder") or targetParent:IsA("Model") or 
+                       targetParent:IsA("Workspace") or targetParent:IsA("ScreenGui") or
+                       targetParent:IsA("Frame") or targetParent:IsA("Service")
+
+if not validContainer then
+    print("[WARNING] Ziel-Parent '" .. targetParent.ClassName .. "' ist moeglicherweise kein Container.")
+end
+
+local success, result = pcall(function()
+    if not sourceObject.Archivable then
+        sourceObject.Archivable = true 
+    end
+    return sourceObject:Clone()
+end)
+
+if not success or not result then
+    print("[ERROR] Klonen fehlgeschlagen: " .. tostring(result))
+    return
+end
+
+local clonedObject = result
+
+-- Set new name if provided
+if newName and newName ~= "" then
+    clonedObject.Name = newName
+    print("[COPY] Objekt umbenannt zu: " .. newName)
+else
+    print("[COPY] Objekt-Name beibehalten: " .. clonedObject.Name)
+end
+
+clonedObject.Parent = targetParent
+
+print("[SUCCESS] Objekt erfolgreich kopiert!")
+print("  Quelle: " .. sourcePath)
+print("  Ziel: " .. targetPath)
+print("  Neu: " .. clonedObject:GetFullName())
+]], sourcePath, targetPath, newName or "")
+
+	return code
+end
+
+return CopyGenerator]]></ProtectedString>
+					<string name="ScriptGuid">{C3DE7325-1D32-43E2-A73C-FFAE20637BEA}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">CopyGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBXBE9474ECFD344A299EB02D4396C0AF3A">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[local Helpers = require(script.Parent.Parent.Helpers)
+
+local CreateGenerator = {}
+
+function CreateGenerator.generate(args)
+	local className = args.className
+	local name = args.name
+	local parent = args.parent
+	local luaCode = args.luaCode or ""
+	local source = args.source
+	local count = tonumber(args.count) or 1
+	local loopVars = args.loopVars or {}
+
+	-- Base64-decode source if it was encoded for transport
+	if source and Helpers and Helpers.base64Decode then
+		source = Helpers.base64Decode(source)
+	end
+
+	-- Validierung: luaCode darf nur obj. und obj:SetAttribute() enthalten
+	local function validateLuaCode(code)
+		if code == "" then return true end  -- Leer ist ok
+
+		for line in code:gmatch("[^\r\n]+") do
+			local trimmed = line:match("^%s*(.-)%s*$")
+			-- Nicht-leere Zeilen und keine Kommentare
+			if trimmed ~= "" and not trimmed:match("^%-%-") then
+				-- Nur obj. oder obj:SetAttribute() erlaubt
+				-- FIX: Pattern korrigiert von "^obj%.%" zu "^obj%."
+				if not (trimmed:match("^obj%.") or trimmed:match("^obj:SetAttribute%(")) then
+					print("[ERROR] CreateGenerator: Ungueltige Zeile (nur obj. oder obj:SetAttribute() erlaubt): " .. line)
+					return false
+				end
+			end
+		end
+		return true
+	end
+
+	if not validateLuaCode(luaCode) then
+		return "print('[ERROR] luaCode enthaelt ungueltige Anweisungen')"
+	end
+
+	local sourceCode = ""
+	if source then
+		local processedSource = Helpers.processSourceString(source)
+		sourceCode = string.format('obj.Source = %s', processedSource)
+	end
+
+	-- Generiere Code fuer Loop-Variablen Initialisierung
+	local loopInitCode = ""
+	local loopIncrementCode = ""
+
+	if loopVars and type(loopVars) == "table" then
+		for varName, config in pairs(loopVars) do
+			if type(config) == "table" and config.start and config.step then
+				-- Init: local x = 0
+				-- FIX: Überflüssige Klammer am Ende entfernt
+				loopInitCode = loopInitCode .. string.format("local %s = %s\n", varName, tostring(config.start))
+
+				-- Increment: x = x + 2
+				-- FIX: Überflüssige Klammer am Ende entfernt
+				loopIncrementCode = loopIncrementCode .. string.format("%s = %s + %s\n", varName, varName, tostring(config.step))
+			end
+		end
+	end
+
+	-- Start Template
+	local code = [=====[ 
+local function getObjectByPath(pathStr)
+	local parts = {}
+	for part in string.gmatch(pathStr, "[^.]+") do
+		table.insert(parts, part)
+	end
+	local current = nil
+	if parts[1] == "workspace" then
+		current = workspace
+	elseif parts[1] == "game" then
+		current = game
+	else
+		pcall(function() current = game:GetService(parts[1]) end)
+	end
+	for i = 2, #parts do
+		if current then current = current:FindFirstChild(parts[i]) end
+	end
+	return current
+end
+
+local className = ]=====] .. string.format("%q", className) .. [=====[ 
+local name = ]=====] .. string.format("%q", name) .. [=====[ 
+local parentPath = ]=====] .. string.format("%q", parent) .. [=====[ 
+local count = ]=====] .. count .. [=====[ 
+
+local parentObj = getObjectByPath(parentPath)
+if not parentObj then
+	print("[ERROR] Parent nicht gefunden: " .. parentPath)
+	return
+end
+
+-- Loop Variablen Initialisierung
+]=====] .. loopInitCode .. [=====[ 
+
+print("[INFO] Erstelle " .. count .. " Objekte vom Typ '" .. className .. "'...")
+
+local createdCount = 0
+
+for i = 1, count do
+	-- Dynamischer Name fuer Batch (Name_1, Name_2) oder Single (Name)
+	local currentName = name
+	if count > 1 then
+		currentName = name .. "_" .. i
+	end
+
+	-- Check existance (nur bei Single sinnvoll, bei Batch zu spammy)
+	if count == 1 then
+		local existing = parentObj:FindFirstChild(currentName)
+		if existing and existing.ClassName == className then
+			print("[ERROR] Object '" .. currentName .. "' [" .. className .. "] existiert bereits in " .. parentPath)
+			print("[HINT] Bitte waehle einen anderen Namen oder loesche das existierende Object zuerst.")
+			return
+		end
+	end
+
+	local success, obj = pcall(function() return Instance.new(className) end)
+	if not success then
+		print("[ERROR] Ungueltige ClassName: " .. className)
+		return
+	end
+
+	obj.Name = currentName
+
+	-- Set all properties, source, and attributes BEFORE parenting
+	local setupSuccess, setupError = pcall(function()
+	]=====] .. luaCode .. "\n" .. sourceCode .. [=====[ 
+	end)
+
+	if not setupSuccess then
+		obj:Destroy()
+		print("[ERROR] Fehler beim Setzen der Properties/Attributes (Objekt " .. i .. "): " .. tostring(setupError))
+		-- Bei Batch: Abbruch oder weiter? Wir brechen ab um Spam zu vermeiden.
+		return
+	end
+
+	obj.Parent = parentObj
+	createdCount = createdCount + 1
+	
+	-- Loop Variablen Inkrementieren
+	]=====] .. loopIncrementCode .. [=====[ 
+end
+
+if count == 1 then
+	print("[SUCCESS] Object erstellt: '" .. name .. "' [" .. className .. "] in " .. parentPath)
+else
+	print("[SUCCESS] Batch abgeschlossen: " .. createdCount .. " Objekte erstellt in " .. parentPath)
+end
+]=====]
+
+	return code
+end
+
+return CreateGenerator]]></ProtectedString>
+					<string name="ScriptGuid">{18AC9649-A6D8-45FB-8352-6395C5FF1840}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">CreateGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBXF2627AEEF03D4931AA0A2B01B8E3CAA9">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[local DeleteGenerator = {}
+
+function DeleteGenerator.generate(args)
+	local path = args.path
+
+	local code = string.format([[
+-- Protected Services die NICHT gelöscht werden dürfen
+local PROTECTED_SERVICES = {
+    ["workspace"] = true,
+    ["players"] = true,
+    ["lighting"] = true,
+    ["replicatedfirst"] = true,
+    ["replicatedstorage"] = true,
+    ["serverscriptservice"] = true,
+    ["serverstorage"] = true,
+    ["startergui"] = true,
+    ["starterpack"] = true,
+    ["starterplayer"] = true,
+    ["teams"] = true,
+    ["soundservice"] = true,
+    ["textchatservice"] = true,
+    ["game"] = true
+}
+
+local function getObjectByPath(pathStr)
+    local parts = {}
+    for part in string.gmatch(pathStr, "[^.]+") do table.insert(parts, part) end
+    if #parts == 0 then return nil end
+
+    local current = nil
+    local rootName = string.lower(parts[1])
+    
+    if rootName == "workspace" then current = workspace
+    elseif rootName == "game" then current = game
+    else pcall(function() current = game:GetService(parts[1]) end) end
+    
+    for i = 2, #parts do
+        if current then current = current:FindFirstChild(parts[i]) end
+    end
+    return current
+end
+
+local path = %q
+local obj = getObjectByPath(path)
+
+if not obj then
+    print("[ERROR] Object nicht gefunden: " .. path)
+    return
+end
+
+-- Sicherheits-Check: Ist es ein geschützter Service?
+local lowerName = string.lower(obj.Name)
+local className = obj.ClassName
+
+if PROTECTED_SERVICES[lowerName] or obj == game or obj == workspace then
+    print("[ERROR] Sicherheitswarnung: Der Service '" .. obj.Name .. "' darf nicht geloescht werden!")
+    return
+end
+
+local objName = obj.Name
+local objClass = obj.ClassName
+local childCount = #obj:GetChildren()
+
+if childCount > 0 then
+    print("[INFO] " .. childCount .. " Child-Objects werden mit geloescht")
+end
+
+local success, error = pcall(function() obj:Destroy() end)
+if success then
+    print("[SUCCESS] Object geloescht: '" .. objName .. "' [" .. objClass .. "]")
+else
+    print("[ERROR] Fehler beim Loeschen: " .. tostring(error))
+end
+]], path)
+
+	return code
+end
+
+return DeleteGenerator]]></ProtectedString>
+					<string name="ScriptGuid">{6B2A705A-5F81-46E6-8807-61AD0316BC38}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">DeleteGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBXB426E94030E54C3EB0254B84F8459446">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[local Helpers = require(script.Parent.Parent.Helpers)
+local DeleteLinesGenerator = {}
+
+function DeleteLinesGenerator.generate(args)
+	local path = args.path
+	local startLine = args.startLine
+	local endLine = args.endLine
+
+	-- ✅ Verwende längere Brackets [=====[ ]=====] damit ]] im Code kein Problem ist!
+	local code = [=====[
+-- ========== ScriptEditorService-basierte deleteLines-Implementierung ==========
+local ScriptEditorService = game:GetService("ScriptEditorService")
+
+local function getObjectByPath(pathStr)
+    local parts = {}
+    for part in string.gmatch(pathStr, "[^.]+") do table.insert(parts, part) end
+    local current = nil
+    if parts[1] == "workspace" then current = workspace
+    elseif parts[1] == "game" then current = game
+    else pcall(function() current = game:GetService(parts[1]) end) end
+    for i = 2, #parts do
+        if current then current = current:FindFirstChild(parts[i]) end
+    end
+    return current
+end
+
+local path = ]=====] .. string.format("%q", path) .. [=====[
+local obj = getObjectByPath(path)
+if not obj then
+    print("[ERROR] Object nicht gefunden: " .. path)
+    return
+end
+
+if not obj:IsA("LuaSourceContainer") then
+    print("[ERROR] Object ist kein Script: " .. obj.ClassName)
+    return
+end
+
+-- ✅ Verwende ScriptEditorService:UpdateSourceAsync()
+local success, errorMsg = pcall(function()
+    ScriptEditorService:UpdateSourceAsync(obj, function(oldSource)
+        -- Zeilen splitten
+        local lines = {}
+        for line in (oldSource .. "\n"):gmatch("([^\r\n]*)\r?\n") do
+            table.insert(lines, line)
+        end
+
+        -- Edge-Case Validierung
+        if #lines == 0 then
+            print("[WARNING] Script ist leer (0 Zeilen)")
+            return ""
+        end
+        if ]=====] .. startLine .. [=====[ > #lines or ]=====] .. endLine .. [=====[ > #lines then
+            print("[WARNING] Zeilen-Range außerhalb des Scripts (Script hat " .. #lines .. " Zeilen)")
+            return oldSource
+        end
+        if ]=====] .. startLine .. [=====[ > ]=====] .. endLine .. [=====[ then
+            print("[ERROR] startLine darf nicht größer als endLine sein")
+            return oldSource
+        end
+
+        -- Zeilen l�schen (alle au�erhalb des Bereichs beibehalten)
+        local newLines = {}
+        for i = 1, #lines do
+            if i < ]=====] .. startLine .. [=====[ or i > ]=====] .. endLine .. [=====[ then
+                table.insert(newLines, lines[i])
+            end
+        end
+
+        return table.concat(newLines, "\n")
+    end)
+end)
+
+if success then
+    print("[SUCCESS] Zeilen " .. ]=====] .. startLine .. [=====[ .. "-" .. ]=====] .. endLine .. [=====[ .. " gel�scht (via ScriptEditorService)")
+else
+    -- Fallback zu obj.Source
+    print("[WARNING] UpdateSourceAsync fehlgeschlagen - verwende Fallback: " .. tostring(errorMsg))
+
+    local fallbackSuccess, fallbackError = pcall(function()
+        local lines = {}
+        for line in (obj.Source .. "\n"):gmatch("([^\r\n]*)\r?\n") do
+            table.insert(lines, line)
+        end
+
+        -- Edge-Case Validierung
+        if #lines == 0 then
+            print("[WARNING] Script ist leer (0 Zeilen)")
+            return
+        end
+        if ]=====] .. startLine .. [=====[ > #lines or ]=====] .. endLine .. [=====[ > #lines then
+            print("[WARNING] Zeilen-Range außerhalb des Scripts (Script hat " .. #lines .. " Zeilen)")
+            return
+        end
+        if ]=====] .. startLine .. [=====[ > ]=====] .. endLine .. [=====[ then
+            print("[ERROR] startLine darf nicht größer als endLine sein")
+            return
+        end
+
+        local newLines = {}
+        for i = 1, #lines do
+            if i < ]=====] .. startLine .. [=====[ or i > ]=====] .. endLine .. [=====[ then
+                table.insert(newLines, lines[i])
+            end
+        end
+
+        obj.Source = table.concat(newLines, "\n")
+    end)
+
+    if fallbackSuccess then
+        print("[SUCCESS] Zeilen " .. ]=====] .. startLine .. [=====[ .. "-" .. ]=====] .. endLine .. [=====[ .. " gel�scht (via Fallback)")
+    else
+        print("[ERROR] Beide Methoden fehlgeschlagen: " .. tostring(fallbackError))
+    end
+end
+]=====]
+	return code
+end
+
+return DeleteLinesGenerator
+]]></ProtectedString>
+					<string name="ScriptGuid">{8BA4DC96-6951-42C6-8009-0AE8794DC56D}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">DeleteLinesGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBX252E202FEA75440C9423DE37109A2B63">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[local Helpers = require(script.Parent.Parent.Helpers)
+
+local EditScriptGenerator = {}
+
+function EditScriptGenerator.generate(args)
+	local path = args.path
+	local oldString = args.old_string
+	local newString = args.new_string
+	local replaceAll = args.replace_all or false
+
+	-- Validate required parameters
+	if not path or not oldString or newString == nil then
+		return 'print("[ERROR] Missing required parameters: path, old_string, and new_string are required")'
+	end
+
+	-- Base64-decoding entfernt - Express Server sendet jetzt dekodierte Strings direkt
+
+	-- Escape the strings for safe Lua code generation
+	local escapedPath = string.format("%q", path)
+	local escapedOldString = string.format("%q", oldString)
+	local escapedNewString = string.format("%q", newString)
+	local replaceAllStr = tostring(replaceAll)
+
+	-- Store original strings for debugging
+	local originalOldString = oldString
+	local originalNewString = newString
+
+	-- Generate the Lua code using the established pattern
+	local code = [=====[
+-- EditScript Generator - String Replacement in Scripts
+local ScriptEditorService = game:GetService("ScriptEditorService")
+
+local function getObjectByPath(pathStr)
+    local parts = {}
+    for part in string.gmatch(pathStr, "[^.]+") do table.insert(parts, part) end
+    local current = nil
+    if parts[1] == "workspace" then current = workspace
+    elseif parts[1] == "game" then current = game
+    else pcall(function() current = game:GetService(parts[1]) end) end
+    for i = 2, #parts do
+        if current then current = current:FindFirstChild(parts[i]) end
+    end
+    return current
+end
+
+local path = ]=====] .. escapedPath .. [=====[
+local oldString = ]=====] .. escapedOldString .. [=====[
+local newString = ]=====] .. escapedNewString .. [=====[
+local replaceAll = ]=====] .. replaceAllStr .. [=====[
+
+local obj = getObjectByPath(path)
+if not obj then
+    print("[ERROR] Object not found: " .. path)
+    return
+end
+
+-- Validate that the object is a script type
+if not obj:IsA("LuaSourceContainer") then
+    print("[ERROR] Object is not a Script/LocalScript/ModuleScript: " .. obj.ClassName)
+    return
+end
+
+-- Get current source using ScriptEditorService (preferred method)
+local currentSource
+local getSuccess, editorSource = pcall(function()
+    return ScriptEditorService:GetEditorSource(obj)
+end)
+
+if getSuccess and editorSource then
+    currentSource = editorSource
+else
+    -- Fallback to direct property access
+    currentSource = obj.Source
+    print("[WARNING] GetEditorSource failed, using fallback to obj.Source")
+end
+
+
+-- Simple exact match only - no normalization or fuzzy matching
+if not currentSource:find(oldString, 1, true) then
+    print("[ERROR] Old string not found in script")
+    return
+end
+
+-- Create backup for rollback
+local backupSource = currentSource
+
+-- Escape percent signs in replacement string for string.gsub()
+local finalReplacementString = newString:gsub("%%", "%%%%")
+
+-- Local pattern escaping function (fallback if Helpers module not loaded)
+local function escapePattern(str)
+    if type(str) ~= "string" then return tostring(str) end
+    return str:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+end
+
+-- Try to use Helpers.escapePattern first, fallback to local function
+local escapedPattern
+if Helpers and Helpers.escapePattern then
+    escapedPattern = Helpers.escapePattern(oldString)
+else
+    escapedPattern = escapePattern(oldString)
+end
+
+-- Perform string replacement with escaped pattern
+local newSource
+if replaceAll then
+    -- Replace all occurrences
+    newSource = string.gsub(currentSource, escapedPattern, finalReplacementString)
+    local replaceCount = select(2, string.gsub(currentSource, escapedPattern, finalReplacementString))
+    print("[SUCCESS] Replaced " .. replaceCount .. " occurrences")
+else
+    -- Replace only first occurrence
+    newSource = string.gsub(currentSource, escapedPattern, finalReplacementString, 1)
+    print("[SUCCESS] Replaced first occurrence")
+end
+
+-- Verify that the replacement actually changed something
+if newSource == currentSource then
+    print("[ERROR] No changes were made - replacement failed or strings were identical")
+    return
+end
+
+-- Apply the changes using ScriptEditorService (preferred method)
+local updateSuccess, updateError = pcall(function()
+    ScriptEditorService:UpdateSourceAsync(obj, function()
+        return newSource
+    end)
+end)
+
+if updateSuccess then
+    print("[SUCCESS] Script updated successfully via ScriptEditorService")
+else
+    -- Fallback to direct property assignment
+    local assignSuccess, assignError = pcall(function()
+        obj.Source = newSource
+    end)
+
+    if assignSuccess then
+        print("[SUCCESS] Script updated successfully via fallback method")
+        print("[WARNING] ScriptEditorService:UpdateSourceAsync failed, used fallback")
+    else
+        print("[ERROR] Failed to update script: " .. tostring(assignError))
+        print("[ERROR] UpdateSourceAsync error: " .. tostring(updateError))
+        return
+    end
+end
+
+-- Final verification
+local verifySuccess, verifySource = pcall(function()
+    return ScriptEditorService:GetEditorSource(obj)
+end)
+
+if verifySuccess then
+    local finalSource = verifySource
+    if finalSource and finalSource:find(newString, 1, true) then
+        print("[SUCCESS] Verification passed - new string found in script")
+    else
+        -- Try fallback verification
+        if obj.Source:find(newString, 1, true) then
+            print("[SUCCESS] Verification passed via fallback - new string found in script")
+        else
+            print("[WARNING] Could not verify changes - may need manual check")
+        end
+    end
+else
+    print("[WARNING] Could not verify changes - verification failed")
+end
+
+print("[SUCCESS] Edit operation completed for: " .. obj:GetFullName() .. " (" .. obj.ClassName .. ")")
+]=====]
+
+	return code
+end
+
+return EditScriptGenerator]]></ProtectedString>
+					<string name="ScriptGuid">{5837AE4D-5DCC-4E51-8A81-09C1C3C46274}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">EditScriptGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBX5B5E6E5E60194A62939101C3FE512FE5">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[local Helpers = require(script.Parent.Parent.Helpers)
+
+local GetGenerator = {}
+
+function GetGenerator.generate(args)
+	local path = args.path
+	local attributes = args.attributes or {}
+
+	local attrReadCode = ""
+	for _, attr in ipairs(attributes) do
+		-- Format the attribute reading code safely
+		attrReadCode = attrReadCode .. string.format([[
+    local attrValue = obj:GetAttribute("%s")
+    if attrValue ~= nil then
+        local valueStr = tostring(attrValue)
+        if typeof(attrValue) == "Vector3" then
+            valueStr = string.format("%%.2f, %%.2f, %%.2f", attrValue.X, attrValue.Y, attrValue.Z)
+        elseif typeof(attrValue) == "Color3" then
+            valueStr = string.format("%%.2f, %%.2f, %%.2f", attrValue.R, attrValue.G, attrValue.B)
+        elseif type(attrValue) == "string" and #attrValue > 200 then
+            valueStr = attrValue:sub(1, 200) .. "... [" .. #attrValue .. " chars]"
+        end
+        print("? %s: " .. valueStr)
+        successCount = successCount + 1
+    else
+        local success, propValue = pcall(function() return obj["%s"] end)
+        if success then
+            local valueStr = tostring(propValue)
+            if typeof(propValue) == "Vector3" then
+                valueStr = string.format("%%.2f, %%.2f, %%.2f", propValue.X, propValue.Y, propValue.Z)
+            elseif typeof(propValue) == "Color3" then
+                valueStr = string.format("%%.2f, %%.2f, %%.2f", propValue.R, propValue.G, propValue.B)
+            elseif type(propValue) == "string" and #propValue > 200 then
+                valueStr = propValue:sub(1, 200) .. "... [" .. #propValue .. " chars]"
+            elseif typeof(propValue) == "Instance" then
+                valueStr = propValue:GetFullName()
+            end
+            print("? %s: " .. valueStr)
+            successCount = successCount + 1
+        else
+            print("? %s: [Nicht gefunden]")
+            failCount = failCount + 1
+        end
+    end
+]], attr, attr, attr, attr, attr)
+	end
+
+	local code = string.format([[
+local function getObjectByPath(pathStr)
+    local parts = {}
+    for part in string.gmatch(pathStr, "[^.]+") do table.insert(parts, part) end
+    if #parts == 0 then return nil end
+
+    local current = nil
+    if parts[1] == "workspace" then current = workspace
+    elseif parts[1] == "game" then current = game
+    else pcall(function() current = game:GetService(parts[1]) end) end
+    
+    for i = 2, #parts do
+        if current then current = current:FindFirstChild(parts[i]) end
+    end
+    return current
+end
+
+local path = %q
+local obj = getObjectByPath(path)
+
+if not obj then
+    print("[ERROR] Object nicht gefunden: " .. path)
+    return
+end
+
+print("=== Get: " .. path .. " [" .. obj.ClassName .. "] ===")
+local successCount = 0
+local failCount = 0
+
+]] .. attrReadCode .. [[
+
+print("")
+print("Summary: " .. successCount .. " succeeded, " .. failCount .. " failed")
+]], path)
+
+	return code
+end
+
+return GetGenerator]]></ProtectedString>
+					<string name="ScriptGuid">{552406B6-41E7-4448-A731-2512ED90FC0A}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">GetGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBX33FAF830AED042D88EE5F752F566DAE9">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[local GetScriptInfoGenerator = {}
+
+function GetScriptInfoGenerator.generate(args)
+	local path = args.path
+
+	local code = string.format([[
+local function getObjectByPath(pathStr)
+    local parts = {}
+    for part in string.gmatch(pathStr, "[^.]+") do table.insert(parts, part) end
+    if #parts == 0 then return nil end
+
+    local current = nil
+    if parts[1] == "workspace" then current = workspace
+    elseif parts[1] == "game" then current = game
+    else pcall(function() current = game:GetService(parts[1]) end) end
+    
+    for i = 2, #parts do
+        if current then current = current:FindFirstChild(parts[i]) end
+    end
+    return current
+end
+
+local path = %q
+local obj = getObjectByPath(path)
+if not obj then
+    print("[ERROR] Object nicht gefunden: " .. path)
+    return
+end
+
+if not obj:IsA("LuaSourceContainer") then
+    print("[ERROR] Object ist kein Script: " .. obj.ClassName)
+    return
+end
+
+local ScriptEditorService = game:GetService("ScriptEditorService")
+local source
+local success, editorSource = pcall(function()
+    return ScriptEditorService:GetEditorSource(obj)
+end)
+
+if success and editorSource then
+    source = editorSource
+else
+    source = obj.Source
+    print("[WARNING] GetEditorSource fehlgeschlagen - Fallback zu obj.Source")
+end
+
+local lineCount = 0
+for line in (source .. "\n"):gmatch("([^
+]*)
+?
+") do
+    lineCount = lineCount + 1
+end
+
+print("=== Script Info: " .. obj.Name .. " ===")
+print("ClassName: " .. obj.ClassName)
+print("Lines: " .. lineCount)
+print("Characters: " .. #source)
+]], path)
+
+	return code
+end
+
+return GetScriptInfoGenerator]]></ProtectedString>
+					<string name="ScriptGuid">{DE78598C-0E64-4E45-9E29-8849D9907CDA}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">GetScriptInfoGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBX2CEF1E709C59470E8DD39C151F4A1198">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[local Helpers = require(script.Parent.Parent.Helpers)
+local InsertLinesGenerator = {}
+
+function InsertLinesGenerator.generate(args)
+	local path = args.path
+	local lineNumber = args.lineNumber
+	local newLines = args.lines or {}
+
+	-- Hinweis: Express Server sendet bereits dekodierte Strings (Klartext)
+	-- Wir muessen sie nur fuer Lua sicher quoten
+
+	local lineTable = {}
+	for _, line in ipairs(newLines) do
+		-- Sicherstellen dass die Lines JSON-kompatibel sind und Lua-Syntax nicht brechen
+		local quotedLine = string.format("%q", line)
+		table.insert(lineTable, quotedLine)
+	end
+	local newLinesLua = "local insertLines = {" .. table.concat(lineTable, ",") .. "}"
+
+	-- Verwende längere Brackets [=====[ ]=====] damit ]] im Code kein Problem ist!
+	local code = [=====[ 
+-- ========== ScriptEditorService-basierte insertLines-Implementierung ========== 
+local ScriptEditorService = game:GetService("ScriptEditorService")
+
+local function getObjectByPath(pathStr)
+    local parts = {}
+    for part in string.gmatch(pathStr, "[^.]+") do table.insert(parts, part) end
+    if #parts == 0 then return nil end
+
+    local current = nil
+    if parts[1] == "workspace" then current = workspace
+    elseif parts[1] == "game" then current = game
+    else pcall(function() current = game:GetService(parts[1]) end) end
+    
+    for i = 2, #parts do
+        if current then current = current:FindFirstChild(parts[i]) end
+    end
+    return current
+end
+
+local path = ]=====] .. string.format("%q", path) .. [=====[ 
+local obj = getObjectByPath(path)
+if not obj then
+    print("[ERROR] Object nicht gefunden: " .. path)
+    return
+end
+
+if not obj:IsA("LuaSourceContainer") then
+    print("[ERROR] Object ist kein Script: " .. obj.ClassName)
+    return
+end
+
+]=====] .. newLinesLua .. [=====[ 
+
+-- Verwende ScriptEditorService:UpdateSourceAsync()
+local success, errorMsg = pcall(function()
+    ScriptEditorService:UpdateSourceAsync(obj, function(oldSource)
+        -- Zeilen splitten
+        local lines = {}
+        for line in (oldSource .. "\n"):gmatch("([^
+]*)
+?
+") do
+            table.insert(lines, line)
+        end
+
+        if ]=====] .. lineNumber .. [=====[ < 1 then
+            print("[ERROR] lineNumber muss >= 1 sein")
+            return oldSource
+        end
+
+        -- Zeilen einfuegen
+        local result = {}
+        for i = 1, #lines do
+            if i == ]=====] .. lineNumber .. [=====[ then
+                -- Neue Zeilen VOR dieser Position einfuegen
+                for _, newLine in ipairs(insertLines) do
+                    table.insert(result, newLine)
+                end
+            end
+            -- Urspruengliche Zeile beibehalten
+            table.insert(result, lines[i])
+        end
+
+        -- Wenn lineNumber > #lines, am Ende anhaengen
+        if ]=====] .. lineNumber .. [=====[ > #lines then
+            for _, newLine in ipairs(insertLines) do
+                table.insert(result, newLine)
+            end
+        end
+
+        return table.concat(result, "\n")
+    end)
+end)
+
+if success then
+    print("[SUCCESS] " .. #insertLines .. " Zeilen bei Zeile " .. ]=====] .. lineNumber .. [=====[ .. " eingefuegt (via ScriptEditorService)")
+else
+    -- Fallback zu obj.Source
+    print("[WARNING] UpdateSourceAsync fehlgeschlagen - verwende Fallback: " .. tostring(errorMsg))
+
+    local fallbackSuccess, fallbackError = pcall(function()
+        local lines = {}
+        for line in (obj.Source .. "\n"):gmatch("([^
+]*)
+?
+") do
+            table.insert(lines, line)
+        end
+
+        if ]=====] .. lineNumber .. [=====[ < 1 then
+            print("[ERROR] lineNumber muss >= 1 sein")
+            return
+        end
+
+        local result = {}
+        for i = 1, #lines do
+            if i == ]=====] .. lineNumber .. [=====[ then
+                for _, newLine in ipairs(insertLines) do
+                    table.insert(result, newLine)
+                end
+            end
+            table.insert(result, lines[i])
+        end
+
+        if ]=====] .. lineNumber .. [=====[ > #lines then
+            for _, newLine in ipairs(insertLines) do
+                table.insert(result, newLine)
+            end
+        end
+
+        obj.Source = table.concat(result, "\n")
+    end)
+
+    if fallbackSuccess then
+        print("[SUCCESS] " .. #insertLines .. " Zeilen bei Zeile " .. ]=====] .. lineNumber .. [=====[ .. " eingefuegt (via Fallback)")
+    else
+        print("[ERROR] Beide Methoden fehlgeschlagen: " .. tostring(fallbackError))
+    end
+end
+]=====]
+	return code
+end
+
+return InsertLinesGenerator]]></ProtectedString>
+					<string name="ScriptGuid">{D39202B9-81CE-4CD7-9D46-4DE3F31476C5}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">InsertLinesGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBXFA8608A317584C5498E92102A7E99295">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[local Helpers = require(script.Parent.Parent.Helpers)
+
+local ModifyObjectGenerator = {}
+
+function ModifyObjectGenerator.generate(args)
+	local path = args.path
+	local luaCode = args.luaCode or ""
+	local source = args.source
+
+	-- Base64-decode source if it was encoded for transport
+	if source and Helpers and Helpers.base64Decode then
+		source = Helpers.base64Decode(source)
+	end
+
+	-- Validierung: luaCode darf nur obj. und obj:SetAttribute() enthalten
+	local function validateLuaCode(code)
+		if code == "" then return true end  -- Leer ist ok
+
+		for line in code:gmatch("[^\r\n]+") do
+			local trimmed = line:match("^%s*(.-)%s*$")
+			-- Nicht-leere Zeilen und keine Kommentare
+			if trimmed ~= "" and not trimmed:match("^%-%-") then
+				-- Nur obj. oder obj:SetAttribute() erlaubt
+				if not (trimmed:match("^obj%.") or trimmed:match("^obj:SetAttribute%(")) then
+					print("[ERROR] ModifyObjectGenerator: Ungültige Zeile (nur obj. oder obj:SetAttribute() erlaubt): " .. line)
+					return false
+				end
+			end
+		end
+		return true
+	end
+
+	if not validateLuaCode(luaCode) then
+		return "print('[ERROR] luaCode enthält ungültige Anweisungen')"
+	end
+
+	local sourceCode = ""
+	if source then
+		-- ✅ Verwende ScriptEditorService für Source-Änderungen
+		-- ✅ Robuste Source-String-Verarbeitung mit Array-Konvertierung und sicheren Escape-Sequenzen
+		local escapedSource = Helpers.processSourceString(source)
+		-- ✅ Verwende längere Brackets [=====[ ]=====] für komplexe Syntax
+		sourceCode = [=====[
+-- Source-Änderung via ScriptEditorService
+if obj:IsA("LuaSourceContainer") then
+    local ScriptEditorService = game:GetService("ScriptEditorService")
+    local updateSuccess, updateError = pcall(function()
+        ScriptEditorService:UpdateSourceAsync(obj, function()
+            return ]=====] .. escapedSource .. [=====[
+        end)
+    end)
+
+    if not updateSuccess then
+        -- Fallback zu direkter Zuweisung
+        obj.Source = ]=====] .. escapedSource .. [=====[
+        print("[WARNING] UpdateSourceAsync fehlgeschlagen - Fallback verwendet")
+    end
+end
+]=====]
+	end
+
+	-- Verwende längere Brackets [=====[ ]=====] für komplexe Syntax
+	local code = [=====[
+local function getObjectByPath(pathStr)
+    local parts = {}
+    for part in string.gmatch(pathStr, "[^.]+") do table.insert(parts, part) end
+    local current = nil
+    if parts[1] == "workspace" then current = workspace
+    elseif parts[1] == "game" then current = game
+    else pcall(function() current = game:GetService(parts[1]) end) end
+    for i = 2, #parts do
+        if current then current = current:FindFirstChild(parts[i]) end
+    end
+    return current
+end
+
+local path = ]=====] .. string.format("%q", path) .. [=====[
+local obj = getObjectByPath(path)
+if not obj then
+    print("[ERROR] Object nicht gefunden: " .. path)
+    return
+end
+
+local success, error = pcall(function()
+]=====] .. luaCode .. "\n" .. sourceCode .. [=====[
+end)
+
+if not success then
+    print("[ERROR] Fehler beim Bearbeiten: " .. tostring(error))
+    return
+end
+
+print("[SUCCESS] Object '" .. obj.Name .. "' [" .. obj.ClassName .. "] bearbeitet")
+]=====]
+	return code
+end
+
+return ModifyObjectGenerator
+]]></ProtectedString>
+					<string name="ScriptGuid">{1836F63B-6E65-4B1E-8470-1F2920B2564B}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">ModifyObjectGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBX603A1775942248DDAD29655889EA19D6">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[local ReadLineGenerator = {}
+
+function ReadLineGenerator.generate(args)
+	local path = args.path
+	local lineNumber = args.lineNumber
+	local startLine = args.startLine
+	local endLine = args.endLine
+
+	local readCode = ""
+	if lineNumber then
+		readCode = [[
+if lines[]] .. lineNumber .. [["] then
+    print('Line ' .. ]] .. lineNumber .. [[ .. ': ' .. lines[]] .. lineNumber .. [[")
+else
+    print('[ERROR] Zeile ]] .. lineNumber .. [[ existiert nicht (Script hat ' .. #lines .. ' Zeilen)')
+end
+]]
+	elseif startLine and endLine then
+		readCode = string.format("for i = %s, %s do print('Line ' .. i .. ': ' .. (lines[i] or '[EMPTY]')) end", startLine, endLine)
+	else
+		readCode = "print('[ERROR] Bitte lineNumber oder startLine/endLine angeben')"
+	end
+
+	local code = [[
+local ScriptEditorService = game:GetService("ScriptEditorService")
+
+local function getObjectByPath(pathStr)
+    local parts = {}
+    for part in string.gmatch(pathStr, "[^.]+") do table.insert(parts, part) end
+    local current = nil
+    if parts[1] == "workspace" then current = workspace
+    elseif parts[1] == "game" then current = game
+    else pcall(function() current = game:GetService(parts[1]) end) end
+    for i = 2, #parts do
+        if current then current = current:FindFirstChild(parts[i]) end
+    end
+    return current
+end
+
+local path = "]] .. path .. [["
+local obj = getObjectByPath(path)
+if not obj then
+    print("[ERROR] Object nicht gefunden: " .. path)
+    return
+end
+
+if not obj:IsA("LuaSourceContainer") then
+    print("[ERROR] Object ist kein Script: " .. obj.ClassName)
+    return
+end
+
+local source
+local success, editorSource = pcall(function()
+    return ScriptEditorService:GetEditorSource(obj)
+end)
+
+if success and editorSource then
+    source = editorSource
+else
+    source = obj.Source
+    print("[WARNING] GetEditorSource fehlgeschlagen - Fallback zu obj.Source")
+end
+
+local lines = {}
+for line in (source .. "\n"):gmatch("([^\r\n]*)\r?\n") do
+    table.insert(lines, line)
+end
+
+]] .. readCode .. [[
+]]
+
+	return code
+end
+
+return ReadLineGenerator
+]]></ProtectedString>
+					<string name="ScriptGuid">{6FCF56E6-175D-4791-A8A2-19563203AAB1}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">ReadLineGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBXC33C23CC2898442ABC3E5102B1C4C6B1">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[local Helpers = require(script.Parent.Parent.Helpers)
+
+local ScriptSearchGenerator = {}
+
+function ScriptSearchGenerator.generate(args)
+	local searchText = args.searchText
+	local caseSensitive = args.caseSensitive or false
+	local maxResults = args.maxResults or 50
+
+	local searchCode = caseSensitive and "line:find(searchText, 1, true)" or "line:lower():find(searchText:lower(), 1, true)"
+
+	-- Nutze %q fuer sicheres Escaping des Suchtextes
+	local code = string.format([[ 
+local ScriptEditorService = game:GetService("ScriptEditorService")
+local searchText = %q
+local caseSensitive = %s
+local maxResults = %d
+
+local services = {
+    "Workspace", "Players", "Lighting", "ReplicatedFirst", "ReplicatedStorage",
+    "ServerScriptService", "ServerStorage", "StarterGui", "StarterPack",
+    "StarterPlayer", "Teams", "SoundService", "Chat", "LocalizationService",
+    "TestService", "InsertService"
+}
+
+local results = {}
+local scriptCount = 0
+
+local function searchInScript(script)
+    local source
+    local success, editorSource = pcall(function() 
+        return ScriptEditorService:GetEditorSource(script)
+    end)
+
+    if success and editorSource then
+        source = editorSource
+    else
+        source = script.Source
+    end
+
+    local matches = {}
+    local lineNum = 0
+    -- Robuste Line-Iteration
+    for line in (source .. "\n"):gmatch("([^
+]*)
+?
+") do
+        lineNum = lineNum + 1
+        if %s then
+            table.insert(matches, {lineNum = lineNum, content = line})
+        end
+    end
+    if #matches > 0 then
+        table.insert(results, {script = script, matches = matches})
+    end
+end
+
+local function searchInContainer(container)
+    for _, obj in ipairs(container:GetDescendants()) do
+        if obj:IsA("LuaSourceContainer") then
+            scriptCount = scriptCount + 1
+            searchInScript(obj)
+            if #results >= maxResults then return end
+        end
+    end
+end
+
+print("=== Script Search Results ===")
+print("Searching for: " .. searchText)
+print("Case Sensitive: " .. tostring(caseSensitive))
+print("")
+
+for _, serviceName in ipairs(services) do
+    local success, service = pcall(function() return game:GetService(serviceName) end)
+    if success then
+        searchInContainer(service)
+        if #results >= maxResults then break end
+    end
+end
+
+print("Searched " .. scriptCount .. " scripts")
+print("Found in " .. #results .. " scripts:")
+print("")
+
+for i, result in ipairs(results) do
+    print("[" .. i .. "] " .. result.script:GetFullName() .. " [" .. result.script.ClassName .. "]")
+    for _, match in ipairs(result.matches) do
+        -- Begrenze zu lange Zeilen in der Ausgabe
+        local content = match.content
+        if #content > 200 then content = content:sub(1, 200) .. "..." end
+        print("    Line " .. match.lineNum .. ": " .. content)
+    end
+    print("")
+end
+]], searchText, tostring(caseSensitive), maxResults, searchCode)
+
+	return code
+end
+
+return ScriptSearchGenerator]]></ProtectedString>
+					<string name="ScriptGuid">{7CDF9BB7-6DE7-4B2F-8CB3-722F4E9DB0C9}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">ScriptSearchGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBX9AF8178811D0422E86F175021F206A83">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[local ScriptSearchOnlyGenerator = {}
+
+function ScriptSearchOnlyGenerator.generate(args)
+	local scriptPath = args.scriptPath or ""
+	local searchText = args.searchText or ""
+	local caseSensitive = args.caseSensitive or false
+
+	-- Validate inputs
+	if not searchText or searchText == "" then
+		return [[print("[ERROR] searchText darf nicht leer sein")]]
+	end
+
+	if not scriptPath or scriptPath == "" then
+		return [[print("[ERROR] scriptPath darf nicht leer sein")]]
+	end
+
+	local searchCode = caseSensitive and "line:find(searchText, 1, true)" or "line:lower():find(searchText:lower(), 1, true)"
+
+	-- Generiere den Code mit sicherem Escaping (%q) und besserem Pfad-Parser
+	local code = string.format([[ 
+local ScriptEditorService = game:GetService("ScriptEditorService")
+
+local function getObjectByPath(pathStr)
+    local parts = {}
+    for part in string.gmatch(pathStr, "[^.]+") do table.insert(parts, part) end
+    if #parts == 0 then return nil end
+
+    local current = nil
+    if parts[1] == "workspace" then current = workspace
+    elseif parts[1] == "game" then current = game
+    else pcall(function() current = game:GetService(parts[1]) end) end
+    
+    for i = 2, #parts do
+        if current then current = current:FindFirstChild(parts[i]) end
+    end
+    return current
+end
+
+local path = %q
+local searchText = %q
+local caseSensitive = %s
+
+local obj = getObjectByPath(path)
+if not obj then
+    print("[ERROR] Script nicht gefunden: " .. path)
+    return
+end
+
+if not obj:IsA("LuaSourceContainer") then
+    print("[ERROR] Object ist kein Script: " .. obj.ClassName)
+    return
+end
+
+local source
+local success, editorSource = pcall(function()
+    return ScriptEditorService:GetEditorSource(obj)
+end)
+
+if success and editorSource then
+    source = editorSource
+else
+    source = obj.Source
+    print("[WARNING] GetEditorSource fehlgeschlagen - Fallback zu obj.Source")
+end
+
+print("=== Search in: " .. obj.Name .. " ===")
+print("Searching for: " .. searchText)
+print("")
+
+local matches = {}
+local lineNum = 0
+for line in (source .. "\n"):gmatch("([^
+]*)
+?
+") do
+    lineNum = lineNum + 1
+    if %s then
+        table.insert(matches, {lineNum = lineNum, content = line})
+    end
+end
+
+if #matches > 0 then
+    print("Found " .. #matches .. " matches:")
+    for _, match in ipairs(matches) do
+        -- Begrenze zu lange Zeilen
+        local content = match.content
+        if #content > 200 then content = content:sub(1, 200) .. "..." end
+        print("  Line " .. match.lineNum .. ": " .. content)
+    end
+else
+    print("[INFO] No matches found")
+end
+]], scriptPath, searchText, tostring(caseSensitive), searchCode)
+
+	return code
+end
+
+return ScriptSearchOnlyGenerator]]></ProtectedString>
+					<string name="ScriptGuid">{C5070407-CC6A-4077-8DA7-F3E7B1231501}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">ScriptSearchOnlyGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBXA987EF1643B34796B35C7C4C96E4692B">
+				<Properties>
+					<Content name="LinkedSource"><null></null></Content>
+					<ProtectedString name="Source"><![CDATA[local TreeGenerator = {}
+
+function TreeGenerator.generate(args)
+	local path = args.path or ""
+
+	local code = string.format([[
+local ALLOWED_SERVICES = {
+    ["textchatservice"] = "TextChatService",
+    ["soundservice"] = "SoundService",
+    ["teams"] = "Teams",
+    ["starterplayer"] = "StarterPlayer",
+    ["starterplayer.startercharacterscripts"] = "StarterPlayer.StarterCharacterScripts",
+    ["starterplayer.starterplayerscripts"] = "StarterPlayer.StarterPlayerScripts",
+    ["starterpack"] = "StarterPack",
+    ["startergui"] = "StarterGui",
+    ["serverstorage"] = "ServerStorage",
+    ["serverscriptservice"] = "ServerScriptService",
+    ["replicatedstorage"] = "ReplicatedStorage",
+    ["replicatedfirst"] = "ReplicatedFirst",
+    ["networkclient"] = "NetworkClient",
+    ["materialservice"] = "MaterialService",
+    ["lighting"] = "Lighting",
+    ["players"] = "Players",
+    ["workspace"] = "Workspace"
+}
+
+-- Config
+local MAX_ITEMS = 600
+local totalItems = 0
+local truncated = false
+
+local function printChildren(obj, indent)
+    if totalItems >= MAX_ITEMS then
+        if not truncated then
+            print(indent .. "... [TRUNCATED: Too many objects! Use tree tool on specific sub-folders to see more]")
+            truncated = true
+        end
+        return
+    end
+
+    indent = indent or ""
+    
+    -- Count children for preview info
+    local children = obj:GetChildren()
+    local childCount = #children
+    
+    -- Print current object
+    local suffix = ""
+    if childCount > 0 then
+        suffix = " (" .. childCount .. " children)"
+    end
+    print(indent .. obj.Name .. " [" .. obj.ClassName .. "]" .. suffix)
+    
+    totalItems = totalItems + 1
+    
+    -- Rekursion
+    for _, child in ipairs(children) do
+        -- Check limit before going deeper
+        if totalItems >= MAX_ITEMS then
+             print(indent .. "  ... [Limit reached]")
+             truncated = true
+             return
+        end
+        printChildren(child, indent .. "  ")
+    end
+end
+
+local function splitPath(pathStr)
+    local parts = {}
+    for part in string.gmatch(pathStr, "[^.]+") do
+        table.insert(parts, part)
+    end
+    return parts
+end
+
+local function printAllowedServices()
+    print("[ERROR] Ungueltiger Service - nur die folgenden Services sind erlaubt:")
+    for _, name in pairs(ALLOWED_SERVICES) do
+        print(" - " .. name)
+    end
+end
+
+-- Suche Kind case-insensitive
+local function findChildCaseInsensitive(parent, name)
+    if not parent then return nil end
+    local nameLower = string.lower(name)
+    for _, child in ipairs(parent:GetChildren()) do
+        if string.lower(child.Name) == nameLower then
+            return child
+        end
+    end
+    return nil
+end
+
+local function getObjectByPath(pathStr)
+    local parts = splitPath(pathStr)
+    if #parts == 0 then
+        return nil, "leerer Pfad"
+    end
+
+    local rootOriginal = parts[1]
+    local rootLower = string.lower(rootOriginal)
+
+    if not ALLOWED_SERVICES[rootLower] then
+        printAllowedServices()
+        return nil, "root_not_allowed"
+    end
+
+    local current = nil
+    if rootLower == "workspace" then
+        current = workspace
+    elseif rootLower == "players" then
+        current = game.Players
+    elseif rootLower == "lighting" then
+        current = game.Lighting
+    else
+        local ok, svc = pcall(function()
+            return game:GetService(ALLOWED_SERVICES[rootLower])
+        end)
+        if ok and svc then
+            current = svc
+        else
+            return nil, "Service '" .. rootOriginal .. "' konnte nicht gefunden werden"
+        end
+    end
+
+    for i = 2, #parts do
+        current = findChildCaseInsensitive(current, parts[i])
+        if not current then
+            return nil, "Objekt nicht gefunden: " .. table.concat(parts, ".")
+        end
+    end
+
+    return current, nil
+end
+
+local target, err = getObjectByPath("%s")
+if not target then
+    if err ~= "root_not_allowed" then
+        print("[ERROR] " .. (err or "Unbekannter Fehler"))
+    end
+else
+    print("=== Tree von " .. target.Name .. " ===")
+    totalItems = 0
+    printChildren(target)
+    
+    if totalItems >= MAX_ITEMS then
+        print("\n[WARNING] Output truncated at 600 items to prevent crash.")
+        print("Please run 'tree' on specific sub-folders to see hidden contents.")
+    end
+end
+]], path)
+
+	return code
+end
+
+return TreeGenerator]]></ProtectedString>
+					<string name="ScriptGuid">{3A3865E0-622E-401C-951A-86BCEAB9AEB4}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">TreeGenerator</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<BinaryString name="Tags"></BinaryString>
+				</Properties>
+			</Item>
+		</Item>
+	</Item>
+</roblox>

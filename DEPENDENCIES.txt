@@ -1,0 +1,63 @@
+==================================================
+ROBLOX STUDIO MCP - SYSTEM VORAUSSETZUNGEN
+==================================================
+
+1. NODE.JS & NPM
+================
+Erforderlich für den Server und die Kommunikation.
+
+- Mindestens: Node.js v18.0.0
+- Empfohlen: Node.js v22.12.0 (LTS)
+- Download: https://nodejs.org/
+
+Prüfung im Terminal:
+> node --version
+> npm --version
+
+2. GOOGLE CHROME
+================
+Erforderlich für das Sicherheits-Dashboard (GUI).
+Der Server öffnet Chrome im "App Mode" für die Steuerung.
+
+
+==================================================
+NPM PAKETE (werden mit 'npm install' installiert)
+==================================================
+
+Diese Pakete sind in der package.json definiert:
+
+1. @modelcontextprotocol/sdk
+   - Kern-Bibliothek für die Kommunikation mit der KI (Claude, etc.)
+
+2. express
+   - Webserver, der die Brücke zwischen KI und Roblox bildet.
+
+3. body-parser
+   - Verarbeitet JSON-Daten (wichtig für große Skripte/Daten).
+
+4. socket.io
+   - Echtzeit-Verbindung zwischen Server und Dashboard GUI.
+
+==================================================
+INSTALLATION & SETUP
+==================================================
+
+1. Projekt herunterladen/klonen.
+2. Terminal im Ordner öffnen.
+3. Befehl ausführen:
+   > npm install
+
+Das installiert alle oben genannten Pakete in den "node_modules" Ordner.
+
+==================================================
+TROUBLESHOOTING
+==================================================
+
+Problem: "npm install" hängt oder bricht ab.
+Lösung: Prüfen Sie Ihre Internetverbindung oder versuchen Sie es als Administrator.
+
+Problem: Dashboard öffnet sich nicht.
+Lösung: Stellen Sie sicher, dass Chrome installiert ist.
+
+Problem: "Missing dependencies".
+Lösung: Löschen Sie den "node_modules" Ordner und führen Sie "npm install" erneut aus.
