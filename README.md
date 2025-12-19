@@ -11,7 +11,27 @@ This project provides the **MCP Server** and **Local Bridge** to connect AI agen
 *   **Loop & Batch Creation:** Create hundreds of objects (e.g., stairs, forests) with a single command.
 *   **Smart Script Conversion:** Convert `Script` ↔ `LocalScript` ↔ `ModuleScript` instantly.
 *   **Security Dashboard:** A local GUI to approve or deny every action the AI tries to perform.
+*   **Safety First:** Whitelist safe tools (like `tree`) and require manual confirmation for critical ones (like `delete`).
 *   **Performance Optimized:** The `multi` tool allows executing dozens of actions in a single AI turn.
+
+---
+
+## 🧐 Why choose this MCP? (Comparison)
+
+This implementation is built for **productivity, safety, and token efficiency**. Unlike basic reference implementations, it provides professional tools for real-world development.
+
+| Feature | Official Reference | Other Community Tools | **This Implementation** |
+| :--- | :--- | :--- | :--- |
+| **Script Editing** | Overwrite / Basic | Mostly Overwrite | **Precise Search-and-Replace (`editScript`)** |
+| **Efficiency** | One-by-one calls | One-by-one calls | **Powerful `multi` tool (Saves Tokens & Time)** |
+| **Security** | Permission prompts | Often none | **Full Dashboard GUI with Whitelist & Approvals** |
+| **Batch Creation** | Manual | Manual | **Native Loops & Variables support** |
+| **Stability** | Proof of Concept | Experimental | **Production Ready (Optimized Task Scheduling)** |
+
+### Key Advantages:
+1.  **Smart `editScript` Workflow:** Instead of re-sending entire files, our AI uses a pinpoint search-and-replace method. This preserves your indentation and is much faster.
+2.  **Massive Token Savings:** Using the `multi` tool, the AI can chain dozens of commands (e.g., "Build a stadium with 100 seats and light it up") into a single request.
+3.  **Local Firewall:** The built-in Express Dashboard acts as a security layer. You see every command before it executes and can block anything suspicious.
 
 ---
 
