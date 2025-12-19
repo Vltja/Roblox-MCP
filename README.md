@@ -11,14 +11,14 @@ This project provides the **MCP Server** and **Local Bridge** to connect AI agen
 *   **Loop & Batch Creation:** Create hundreds of objects (e.g., stairs, forests) with a single command.
 *   **Smart Script Conversion:** Convert `Script` ↔ `LocalScript` ↔ `ModuleScript` instantly.
 *   **Security Dashboard:** A local GUI to approve or deny every action the AI tries to perform.
-*   **Safety First:** Whitelist safe tools (like `tree`) and require manual confirmation for critical ones (like `delete`).
+*   **Performance Optimized:** The `multi` tool allows executing dozens of actions in a single AI turn.
 
 ---
 
 ## 🚀 Installation (Step-by-Step)
 
 ### 1. Prerequisites
-*   **Node.js:** [Download & Install LTS Version](https://nodejs.org/) (Required to run the server).
+*   **Node.js:** [Download & Install LTS Version](https://nodejs.org/) (Required).
 *   **Google Chrome:** Required for the Dashboard GUI.
 *   **Roblox Studio:** With a place open.
 
@@ -45,13 +45,10 @@ This handles the heavy lifting like code generation and secure execution.
 ## ⚙️ Configuring your AI Agent
 
 MCP requires the **absolute path** to the `mcp-server.js` file.  
-**Windows Tip:** Shift + Right-click `mcp-server.js` -> "Copy as path".  
-**Important:** In JSON files, use forward slashes `/` or double backslashes `\\` (e.g., `C:/RobloxMCP/mcp-server.js`).
+**Important:** In JSON files, use forward slashes `/` or double backslashes `\` (e.g., `C:/RobloxMCP/mcp-server.js`).
 
 ### 1. Claude Desktop
 *   **Config Path:** `%APPDATA%\Claude\claude_desktop_config.json`
-*   **Official Guide:** [Anthropic MCP Setup](https://modelcontextprotocol.io/quickstart/user)
-
 Add this to the `mcpServers` section:
 ```json
 "roblox-studio": {
@@ -60,46 +57,56 @@ Add this to the `mcpServers` section:
 }
 ```
 
-### 2. Cursor
-*   **Settings:** `Settings > Features > MCP`
-*   **Official Guide:** [Cursor MCP Docs](https://docs.cursor.com/features/mcp)
-1. Click **"+ Add New MCP Server"**.
-2. Name: `roblox-studio` | Type: `stdio`.
-3. Command: `node "C:/YOUR_PATH/mcp-server.js"`
-
-### 3. Roo Code / Cline (VS Code)
-*   **Settings:** Open the extension and go to `Settings > MCP Servers`.
-*   **Official Guide:** [Roo Code Config](https://github.com/RooCode/Roo-Code)
-1. Edit the MCP Config file through the UI.
-2. Add the same JSON block as shown in the "Claude Desktop" section.
-
-### 4. Windsurf
-*   **Config Path:** `~/.codeium/windsurf/mcp_config.json`
-*   **Official Guide:** [Windsurf MCP Docs](https://docs.codeium.com/windsurf/mcp)
-Add the server definition under the `mcpServers` key.
-
-### 5. Claude Code (CLI)
-*   **Command:** Run this in your terminal:
-*   **Official Guide:** [Claude Code Guide](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code)
-```bash
-claude mcp add roblox-studio --command node --args "C:/YOUR_PATH/mcp-server.js"
-```
-
-### 6. Gemini CLI (Google)
-*   **Official Repo:** [Google Gemini CLI](https://github.com/google-gemini/gemini-cli)
-Add the server definition to your Gemini CLI configuration (usually located in `~/.config/gemini-cli/config.json` or as specified in their documentation).
+### 2. Cursor / Roo Code / Windsurf
+Go to the MCP settings of your IDE and add a new `stdio` server:
+*   Command: `node "C:/YOUR_PATH/mcp-server.js"`
 
 ---
 
 ## 🖥️ Usage
 
-1.  **Open Roblox Studio** and click **"Verbinden"** in the RobloxMCP Premium widget.
-2.  **Start your AI Agent** (Claude, Cursor, etc.).
-3.  A **Chrome window** will open (The Dashboard). **Keep it open!**
-4.  **Chat:** Ask the AI to build something!
-    *   "Create a row of 10 red neon parts"
-    *   "List all scripts in the game"
-    *   "Change the Transparency of all Parts in Workspace to 0.5"
+1.  **Start the Bridge Server:**  
+    **CRITICAL:** You must start the Express server manually before or during your AI session.  
+    Run the following file:  
+    `ExpressServer\start-server.bat`  
+    *This opens a Chrome window (The Dashboard). Keep it open!*
+
+2.  **In Roblox Studio:**  
+    Open your place and click **"Verbinden"** in the RobloxMCP Premium widget.
+
+3.  **Chat with AI:**  
+    Start talking to your AI. The Dashboard will prompt you to approve sensitive actions.
+
+---
+
+## 🧰 Available MCP Tools
+
+This server provides a comprehensive toolset for Roblox development:
+
+| Tool | Description |
+| :--- | :--- |
+| `tree` | Returns the full hierarchy tree of any object path. |
+| `get` | Reads specific properties and attributes from an object. |
+| `create` | Creates parts, scripts, folders, etc. Supports Batch-mode & Loops. |
+| `modifyObject` | Modifies properties or replaces the entire source code of a script. |
+| `editScript` | **AI Workflow:** Precise search-and-replace for script code. |
+| `readLine` | Reads specific line ranges from any script. |
+| `insertLines` | Inserts new lines of code at a specific position. |
+| `deleteLines` | Deletes a range of lines from a script. |
+| `getScriptInfo` | Returns metadata like line count and character count. |
+| `scriptSearch` | Global search for text across ALL scripts in the game. |
+| `copy` | Clones an object to a new destination. |
+| `delete` | Permanently removes an object from the game. |
+| `convertScript` | Changes a script's class (e.g., Script to LocalScript) while keeping code. |
+| `multi` | **Power Tool:** Executes multiple tool calls in a single sequence. |
+
+### 🚀 The `multi` Tool Advantage
+The `multi` tool is designed for complex tasks. Instead of the AI calling one tool at a time (which is slow and costs more tokens), it can bundle dozens of commands:
+*   **Example:** "Create a folder, put 50 parts inside, and then add a script to each." 
+*   The AI sends one `multi` call, and the server executes them sequentially in Roblox Studio.
+*   **Benefit:** Faster execution, reduced latency, and lower API costs.
+
+---
 
 ## 🛡️ Security
 The Dashboard at `http://localhost:3000` is your firewall. 
