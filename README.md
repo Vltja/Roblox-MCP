@@ -18,7 +18,8 @@ This project provides the **MCP Server** and **Local Bridge** to connect AI agen
 ## 🚀 Installation (Step-by-Step)
 
 ### 1. Prerequisites
-*   **Node.js:** [Download & Install LTS Version](https://nodejs.org/) (Required).
+*   **Node.js:** [Download & Install v22.12.0 LTS](https://nodejs.org/)  
+    *   *Recommended:* **v22.12.0** (Explicitly tested. If you face connection issues with newer versions, use this one).
 *   **Google Chrome:** Required for the Dashboard GUI.
 *   **Roblox Studio:** With a place open.
 
