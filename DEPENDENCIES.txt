@@ -6,13 +6,15 @@ ROBLOX STUDIO MCP - SYSTEM VORAUSSETZUNGEN
 ================
 Erforderlich für den Server und die Kommunikation.
 
+- Getestete Version: Node.js v22.12.0 (LTS) <- DRINGEND EMPFOHLEN!
 - Mindestens: Node.js v18.0.0
-- Empfohlen: Node.js v22.12.0 (LTS)
 - Download: https://nodejs.org/
+
+HINWEIS: Wenn der MCP-Server in Ihrer KI (Claude/Cursor) nicht startet, installieren Sie bitte exakt die Version v22.12.0. Neuere Versionen könnten Inkompatibilitäten mit dem MCP-SDK aufweisen.
 
 Prüfung im Terminal:
 > node --version
-> npm --version
+
 
 2. GOOGLE CHROME
 ================
