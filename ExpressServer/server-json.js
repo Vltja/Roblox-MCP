@@ -14,7 +14,7 @@ const settingsPath = path.join(__dirname, 'settings.json');
 const LOG_FILE_PATH = path.join(__dirname, 'server_debug.log');
 const ENABLE_FILE_LOGGING = false; // Setze auf true, um in server_debug.log zu schreiben
 
-// ========== LOGGING SYSTEM ==========
+// ========== LOGGING SYSTEM ========== 
 // Log file leeren beim Start (nur wenn aktiviert)
 if (ENABLE_FILE_LOGGING) {
   try {
@@ -397,6 +397,7 @@ function loadSettings() {
       const settings = JSON.parse(data);
       return {
         autoAccept: settings.autoAccept !== undefined ? settings.autoAccept : true,
+        strictEditScript: settings.strictEditScript !== undefined ? settings.strictEditScript : false,
         whitelist: settings.whitelist || ['tree', 'get', 'copy', 'readLine', 'getScriptInfo', 'scriptSearch', 'scriptSearchOnly', 'editScript', 'convertScript']
       };
     }
@@ -407,6 +408,7 @@ function loadSettings() {
   // Default settings
   return {
     autoAccept: true,
+    strictEditScript: false, // Default: Ausgeschaltet (User Wunsch)
     whitelist: ['tree', 'get', 'copy', 'readLine', 'getScriptInfo', 'scriptSearch', 'scriptSearchOnly', 'editScript', 'convertScript']
   };
 }
@@ -415,6 +417,7 @@ function saveSettings() {
   try {
     const settings = {
       autoAccept: autoAccept,
+      strictEditScript: strictEditScript,
       whitelist: Array.from(toolWhitelist)
     };
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
@@ -429,6 +432,7 @@ const savedSettings = loadSettings();
 
 // ========== Approval System ========== 
 let autoAccept = savedSettings.autoAccept;
+let strictEditScript = savedSettings.strictEditScript;
 let pendingApprovals = new Map(); // requestId -> { resolve, reject, request }
 let toolWhitelist = new Set(savedSettings.whitelist);
 
@@ -921,11 +925,13 @@ app.post('/api/:tool/direct', async (req, res) => {
       const { path } = args;
 
       // Nur workflow-spezifische Validierung: Prüfe ob vorher readLine aufgerufen wurde (gleicher Pfad)
-      if (!lastToolCall || lastToolCall.tool !== 'readLine' || lastToolCall.params.path !== path) {
-        return res.json({
-          success: false,
-          error: 'Vor dem Aufrufen von editScript muss zuerst eine readLine-Anfrage ausgeführt werden.'
-        });
+      if (strictEditScript) {
+        if (!lastToolCall || lastToolCall.tool !== 'readLine' || lastToolCall.params.path !== path) {
+          return res.json({
+            success: false,
+            error: 'Vor dem Aufrufen von editScript muss zuerst eine readLine-Anfrage ausgeführt werden.'
+          });
+        }
       }
     }
 
@@ -977,11 +983,19 @@ io.on('connection', (socket) => {
   // Send initial settings on connect
   socket.emit('whitelistUpdate', Array.from(toolWhitelist));
   socket.emit('autoAcceptUpdate', autoAccept);
+  socket.emit('strictEditScriptUpdate', strictEditScript);
 
   // Toggle Auto-Accept
   socket.on('toggleAutoAccept', (value) => {
     autoAccept = value;
     logInfo(`🔄 Auto-Accept ${value ? 'aktiviert' : 'deaktiviert'}`);
+    saveSettings(); // 💾 Speichere Einstellungen
+  });
+
+  // Toggle Strict EditScript
+  socket.on('toggleStrictEditScript', (value) => {
+    strictEditScript = value;
+    logInfo(`🛡️ Strict EditScript Mode ${value ? 'aktiviert' : 'deaktiviert'}`);
     saveSettings(); // 💾 Speichere Einstellungen
   });
 

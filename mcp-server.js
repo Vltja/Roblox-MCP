@@ -334,7 +334,21 @@ EXAMPLE:
       },
       {
         name: 'readLine',
-        description: 'Read specific lines from a script or object source. WORKFLOW: Use readLine() first to analyze the current code, then make changes with deleteLines()/insertLines() or modifyObject(), then use readLine() again to verify the changes worked correctly.',
+        description: `Read specific lines from a script or object source. WORKFLOW: Use readLine() first to analyze the current code, then make changes with deleteLines()/insertLines() or modifyObject(), then use readLine() again to verify the changes worked correctly.
+
+EXAMPLES:
+1. Read a single line:
+{
+  "path": "game.ReplicatedStorage.Script",
+  "lineNumber": 10
+}
+
+2. Read a range of lines:
+{
+  "path": "game.ReplicatedStorage.Script",
+  "startLine": 10,
+  "endLine": 20
+}`,
         inputSchema: {
           type: 'object',
           properties: {

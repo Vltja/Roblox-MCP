@@ -33,6 +33,7 @@ This implementation is built for **productivity, safety, and token efficiency**.
 2.  **Context Efficiency (Intuitive Discovery):** Tools like `scriptSearch`, `readLine`, and `tree` allow the AI to "feel" your project intuitively. It can instantly find any script, variable, or object without wasting dozens of tool calls just to "find where things are."
 3.  **The `multi` Tool Power:** Chaining dozens of actions (e.g., "Build a stadium with 100 seats and light it up") into a single request drastically reduces latency and API costs while making complex automation reliable.
 *   **Local Firewall:** The built-in Express Dashboard acts as a security layer. You see every command before it executes and can block anything suspicious.
+*   **Flexible Safety:** New **Strict EditScript** toggle allows you to choose between maximum safety (requires reading code before editing) or maximum speed (direct edits).
 
 ---
 
@@ -108,6 +109,7 @@ Choose **one** of the following options to get the code:
 This handles the heavy lifting like code generation and secure execution.
 *   [**Get it here on Roblox Store**](https://create.roblox.com/store/asset/83680138548519/PremiumPlugin)
 *   *Note: Without the Premium Plugin, the server will connect but cannot execute commands.*
+*   **Update v2.1.1:** Disabled automatic JSON array conversion to fix Lua table indexing bugs (e.g., `t["key"]` is now preserved correctly).
 
 ---
 
@@ -181,6 +183,9 @@ The `multi` tool is designed for complex tasks. Instead of the AI calling one to
 The Dashboard at `http://localhost:3000` is your firewall. 
 *   **Whitelist:** Safe tools like `tree` or `get` can be allowed to run without asking.
 *   **Manual Approval:** Critical tools like `delete` or `editScript` will wait for you to click **"Accept"** in the browser.
+*   **Strict EditScript Mode:** A toggle in the dashboard.
+    *   **OFF (Default):** AI can edit scripts directly if it knows the code. Faster and more flexible.
+    *   **ON:** AI *must* successfully read the code (`readLine`) before it is allowed to edit it. Maximum safety against hallucinations.
 
 ---
 *Roblox Studio MCP - The bridge between AI and Creation.*

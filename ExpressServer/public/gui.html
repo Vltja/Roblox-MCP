@@ -403,6 +403,10 @@
                 </div>
             </div>
             <div class="toggle-container">
+                <span class="toggle-label">Strict EditScript</span>
+                <div class="toggle" id="strictEditScriptToggle" title="Wenn aktiv: editScript erfordert vorheriges readLine()"></div>
+            </div>
+            <div class="toggle-container">
                 <span class="toggle-label">Auto-Accept All</span>
                 <div class="toggle" id="autoAcceptToggle"></div>
             </div>
@@ -470,6 +474,7 @@
         const approvalList = document.getElementById('approvalList');
         const whitelistGrid = document.getElementById('whitelistGrid');
         const autoAcceptToggle = document.getElementById('autoAcceptToggle');
+        const strictEditScriptToggle = document.getElementById('strictEditScriptToggle');
         const statusIndicator = document.getElementById('statusIndicator');
         const pluginIndicator = document.getElementById('pluginIndicator');
         const pluginStatus = document.getElementById('pluginStatus');
@@ -496,11 +501,28 @@
             }
         });
 
+        // Strict EditScript Toggle
+        strictEditScriptToggle.addEventListener('click', () => {
+            strictEditScriptToggle.classList.toggle('active');
+            const isActive = strictEditScriptToggle.classList.contains('active');
+            socket.emit('toggleStrictEditScript', isActive);
+        });
+
         // Socket.io Events
         socket.on('connect', () => {
             statusIndicator.className = 'status-indicator connected';
             addLog('info', '[System] Verbunden mit Server');
             socket.emit('getWhitelist');
+        });
+
+        socket.on('strictEditScriptUpdate', (value) => {
+            if (value) {
+                strictEditScriptToggle.classList.add('active');
+                addLog('info', '[System] Strict EditScript Mode aktiviert');
+            } else {
+                strictEditScriptToggle.classList.remove('active');
+                addLog('info', '[System] Strict EditScript Mode deaktiviert');
+            }
         });
 
         socket.on('autoAcceptUpdate', (value) => {
