@@ -38,7 +38,7 @@ This project provides the **MCP Server** and **Local Bridge** to connect AI agen
 #### B. 💎 Premium Plugin (Required for Execution)
 This handles the heavy lifting like code generation and secure execution.
 *   [**Get it here on Roblox Store**](https://create.roblox.com/store/asset/83680138548519/PremiumPlugin)
-*   *Make sure **HttpService** is enabled in Game Settings -> Security.*
+*   *Note: Without the Premium Plugin, the server will connect but cannot execute commands.*
 
 ---
 
