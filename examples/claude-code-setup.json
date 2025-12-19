@@ -1,0 +1,4 @@
+{
+  "command_to_run": "claude mcp add roblox-studio --command node --args \"C:/YOUR_PATH/mcp-server.js\"",
+  "description": "Run this command in your terminal to add the Roblox MCP server to Claude Code."
+}

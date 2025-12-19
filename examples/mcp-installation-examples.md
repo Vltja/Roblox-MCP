@@ -1,237 +1,85 @@
 # MCP Installation Examples
 
-Allgemeine Installationsanleitungen für verschiedene MCP-fähige Systeme und KIs.
+This directory contains configuration examples for various AI agents and IDEs that support the Model Context Protocol (MCP).
 
-## 🔧 Allgemeine MCP-Konfiguration
-
-Dieser MCP-Server funktioniert mit **jeder** KI oder Anwendung, die das Model Context Protocol (MCP) unterstützt.
-
-### Grundlegende Konfiguration
-
-Die meisten MCP-fähigen Systeme benötigen zwei Informationen:
-1. **Command:** `node`
-2. **Args:** Pfad zur `mcp-server.js` Datei
-3. **Path/Directory:** Arbeitsverzeichnis (optional)
-
----
-
-## 🤖 Unterstützte Systeme
+## 🤖 Supported Systems
 
 ### 1. Claude Desktop (Anthropic)
-**Konfigurationsdatei:**
+**Config Path:**
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Linux:** `~/.config/claude/claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
     "roblox-studio": {
       "command": "node",
-      "args": ["C:\\Pfad\\zu\\roblox-studio-mcp\\mcp-server.js"],
-      "env": {}
+      "args": ["C:/YOUR_PATH/mcp-server.js"]
     }
   }
 }
 ```
 
-### 2. KiloCode CLI
-```bash
-# Installation
-kilocode install-mcp roblox-studio --command "node" --args "C:\\Pfad\\zu\\roblox-studio-mcp\\mcp-server.js"
+### 2. Cursor (AI Code Editor)
+**Settings:** `Settings > Features > MCP`
+1. Add New MCP Server.
+2. Name: `roblox-studio`
+3. Type: `stdio`
+4. Command: `node "C:/YOUR_PATH/mcp-server.js"`
 
-# Oder über Konfigurationsdatei
-kilocode config set mcp.roblox-studio.command "node"
-kilocode config set mcp.roblox-studio.args "C:\\Pfad\\zu\\roblox-studio-mcp\\mcp-server.js"
-```
-
-### 3. Google Gemini CLI
-```bash
-# Konfiguration
-gemini mcp add roblox-studio \
-  --command "node" \
-  --args "/pfad/zu/roblox-studio-mcp/mcp-server.js"
-
-# Aktivieren
-gemini mcp enable roblox-studio
-```
-
-### 4. Continue.dev (VS Code)
-**VS Code Settings:** `settings.json`
-```json
-{
-  "continue.mcpServers": {
-    "roblox-studio": {
-      "command": "node",
-      "args": ["/pfad/zu/roblox-studio-mcp/mcp-server.js"],
-      "cwd": "/pfad/zu/roblox-studio-mcp"
-    }
-  }
-}
-```
-
-### 5. Cursor (AI Code Editor)
-**Konfiguration:** `~/.cursor/rules` oder GUI-Einstellungen
+### 3. Roo Code / Cline / Cline (VS Code Extensions)
+**Settings:** Open the extension settings and add the following to the MCP configuration:
 ```json
 {
   "mcpServers": {
     "roblox-studio": {
       "command": "node",
-      "args": ["~/roblox-studio-mcp/mcp-server.js"],
-      "env": {}
+      "args": ["C:/YOUR_PATH/mcp-server.js"]
     }
   }
 }
 ```
 
-### 6. Cline (VS Code Extension)
+### 4. Windsurf (Codeium)
+**Config Path:**
+- **Windows:** `%USERPROFILE%\.codeium\windsurf\mcp_config.json`
+- **macOS:** `~/.codeium/windsurf/mcp_config.json`
+
 ```json
 {
   "mcpServers": {
     "roblox-studio": {
       "command": "node",
-      "args": ["~/roblox-studio-mcp/mcp-server.js"],
-      "disabled": false
+      "args": ["C:/YOUR_PATH/mcp-server.js"]
     }
   }
 }
 ```
 
----
-
-## 📁 Pfad-Beispiele für verschiedene Betriebssysteme
-
-### Windows
-```json
-{
-  "command": "node",
-  "args": ["C:\\Users\\Username\\Desktop\\roblox-studio-mcp\\mcp-server.js"]
-}
-```
-
-### macOS
-```json
-{
-  "command": "node",
-  "args": ["/Users/Username/Desktop/roblox-studio-mcp/mcp-server.js"]
-}
-```
-
-### Linux
-```json
-{
-  "command": "node",
-  "args": ["/home/username/roblox-studio-mcp/mcp-server.js"]
-}
-```
-
----
-
-## 🔍 Test der Installation
-
-### 1. Server direkt testen
+### 5. Claude Code (CLI)
+Run the following command in your terminal:
 ```bash
-cd roblox-studio-mcp
-node mcp-server.js
+claude mcp add roblox-studio --command node --args "C:/YOUR_PATH/mcp-server.js"
 ```
 
-**Erwartete Ausgabe:**
-```
-✅ All dependencies already installed
-✅ MCP Server bereit (Roblox Studio)
-```
-
-### 2. MCP-Verbindung testen
-Die meisten MCP-fähigen Systeme bieten einen Test-Befehl:
-
-```bash
-# Claude Desktop
-claude mcp list
-
-# KiloCode
-kilocode mcp test roblox-studio
-
-# Gemini CLI
-gemini mcp list
-
-# Continue
-# Über VS Code Command Palette: "Continue: Test MCP Connection"
-```
+### 6. Gemini CLI / Google Gemini CLI
+**GitHub:** [google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli)
+Follow their documentation to add a local stdio MCP server.
 
 ---
 
-## 🚨 Häufige Probleme & Lösungen
+## 📁 Path Formatting Tips
 
-### Problem: "node: command not found"
-**Lösung:** Node.js installieren (https://nodejs.org/)
-
-### Problem: "Cannot find module"
-**Lösung:** Im richtigen Verzeichnis ausführen:
-```bash
-cd /pfad/zu/roblox-studio-mcp
-node mcp-server.js
-```
-
-### Problem: Pfad nicht gefunden
-**Lösung:** Vollständigen Pfad verwenden:
-- Windows: `C:\\Users\\Name\\...`
-- Mac/Linux: `/home/name/...`
-
-### Problem: Roblox Server nicht erreichbar
-**Lösung:** Stelle sicher, dass Roblox Studio Plugin auf `localhost:3000` läuft
+When editing JSON configuration files:
+- **Windows:** Use forward slashes `/` (e.g., `C:/Path/to/file.js`) OR double backslashes `\` (e.g., `C:\Path\to\file.js`).
+- **macOS/Linux:** Use standard Unix paths (e.g., `/Users/name/Path/to/file.js`).
 
 ---
 
-## 🛠️ Erweiterte Konfiguration
+## 🔍 Verification
 
-### Mit Umgebungsvariablen
-```json
-{
-  "command": "node",
-  "args": ["~/roblox-studio-mcp/mcp-server.js"],
-  "env": {
-    "ROBLOX_API_URL": "http://localhost:3000",
-    "DEBUG": "true"
-  }
-}
-```
-
-### Mit Arbeitsverzeichnis
-```json
-{
-  "command": "node",
-  "args": ["mcp-server.js"],
-  "cwd": "~/roblox-studio-mcp"
-}
-```
-
----
-
-## 📚 MCP Kompatibilität
-
-Dieser Server ist kompatibel mit:
-- ✅ **Claude Desktop** (Anthropic)
-- ✅ **KiloCode CLI**
-- ✅ **Google Gemini CLI**
-- ✅ **Continue.dev** (VS Code)
-- ✅ **Cursor** (AI Editor)
-- ✅ **Cline** (VS Code Extension)
-- ✅ **Jede MCP-fähige Anwendung**
-
-### MCP Version Support
-- ✅ **MCP v1.0+** (current)
-- ✅ **Stdio Transport**
-- ✅ **JSON-RPC 2.0**
-
----
-
-## 🔗 Nützliche Ressourcen
-
-- [MCP Specification](https://modelcontextprotocol.io/)
-- [Claude Desktop Setup](https://docs.anthropic.com/claude/docs/mcp)
-- [KiloCode Documentation](https://kilocode.dev/docs/mcp)
-- [Continue.dev MCP Guide](https://continue.dev/docs/mcp)
-
----
-
-💡 **Tipp:** Kopiere die passende Konfiguration für dein System und passe nur den Pfad an!
+To verify your installation:
+1. Ensure the Express Server is running (`ExpressServer\start-server.bat`).
+2. Open your AI agent.
+3. It should now list new tools like `tree`, `create`, `get`, etc.
+4. Try asking: "Can you see my Roblox Workspace?"

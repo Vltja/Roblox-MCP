@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "roblox-studio": {
+      "command": "node",
+      "args": [
+        "C:/YOUR_PATH/mcp-server.js"
+      ]
+    }
+  }
+}
