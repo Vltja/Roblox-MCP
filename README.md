@@ -24,9 +24,21 @@ This project provides the **MCP Server** and **Local Bridge** to connect AI agen
 *   **Roblox Studio:** With a place open.
 
 ### 2. Setup the Server
-1.  Download or Clone this repository to a folder on your PC (e.g., `C:\RobloxMCP`).
-2.  Open a Terminal (CMD or PowerShell) in that folder.
-3.  Run: `npm install`
+Choose **one** of the following options to get the code:
+
+*   **Option A: Download ZIP (Easiest)**
+    [**Click here to Download the Project**](https://github.com/Vltja/Roblox-MCP/archive/refs/heads/main.zip)  
+    *(Then extract the ZIP file to a folder on your PC, e.g., `C:\RobloxMCP`)*
+
+*   **Option B: Using Git (Advanced)**
+    Open a terminal and run:
+    ```bash
+    git clone https://github.com/Vltja/Roblox-MCP.git
+    ```
+
+**After getting the code:**
+1.  Open a Terminal (CMD or PowerShell) in your folder (e.g., `C:\RobloxMCP`).
+2.  Run: `npm install` (This installs the necessary libraries).
 
 ### 3. Install Roblox Plugins
 
