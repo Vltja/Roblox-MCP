@@ -32,7 +32,31 @@ This implementation is built for **productivity, safety, and token efficiency**.
 1.  **Massive Token Savings & Precision:** Our `editScript` pinpoint search-and-replace method allows the AI to modify specific lines without re-sending or overwriting entire files. This saves thousands of tokens and prevents accidental code destruction.
 2.  **Context Efficiency (Intuitive Discovery):** Tools like `scriptSearch`, `readLine`, and `tree` allow the AI to "feel" your project intuitively. It can instantly find any script, variable, or object without wasting dozens of tool calls just to "find where things are."
 3.  **The `multi` Tool Power:** Chaining dozens of actions (e.g., "Build a stadium with 100 seats and light it up") into a single request drastically reduces latency and API costs while making complex automation reliable.
-4.  **Local Firewall:** The built-in Express Dashboard acts as a security layer. You see every command before it executes and can block anything suspicious.
+*   **Local Firewall:** The built-in Express Dashboard acts as a security layer. You see every command before it executes and can block anything suspicious.
+
+---
+
+## 📺 Watch it in Action
+[![Roblox MCP Overview](https://img.youtube.com/vi/YOUR_VIDEO_ID/0.jpg)](https://www.youtube.com/watch?v=YOUR_VIDEO_ID)  
+*Full setup and build demo video coming soon!*
+
+---
+
+## 🛡️ Security & Privacy (Local Only)
+We take your security seriously. The Roblox Studio MCP architecture is designed to be **100% private**:
+*   **No Cloud Dependency:** The Express Server and Bridge run strictly on your **localhost**.
+*   **Zero External Tracking:** No data about your project is sent to our servers.
+*   **You are the Firewall:** Every critical action (like deleting objects or editing code) must be manually approved by you in the Dashboard.
+*   **Standard Protocol:** We use the official Model Context Protocol (MCP) by Anthropic for communication with the AI.
+
+---
+
+## ✅ Quality Assurance
+This server has been rigorously tested with a suite of over **100 automated test cases** covering:
+*   Precise Line-by-Line editing and search operations.
+*   Massive batch creation (Stress tests with 200+ objects).
+*   Security blocking and whitelist logic.
+*   Stability during long AI sessions.
 
 ---
 
