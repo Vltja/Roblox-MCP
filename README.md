@@ -60,6 +60,17 @@ This server has been rigorously tested with a suite of over **100 automated test
 
 ---
 
+## 📦 Dependencies & Requirements
+
+To use this system, the following components are required:
+
+*   **Node.js (v22.12.0 LTS):** The engine that runs the MCP server and the Express bridge. It handles all communication between the AI and Roblox.
+*   **Google Chrome:** Required for the **Security Dashboard**. The server uses Chrome's "App Mode" to provide a clean, local interface for you to monitor and approve AI actions.
+*   **Roblox Studio:** The development environment where your game lives and where the plugins execute the AI's commands.
+*   **NPM (Node Package Manager):** Used to install the necessary libraries (like Express and Socket.io) that make the bridge work.
+
+---
+
 ## 🚀 Installation (Step-by-Step)
 
 ### 1. Prerequisites
