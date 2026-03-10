@@ -8,6 +8,7 @@ A Model Context Protocol (MCP) server for Roblox Studio integration using **WebS
 - **17 Roblox Studio Tools**: Complete set of tools for object manipulation, script editing, and more
 - **Tool Control Panel**: Built-in UI in Roblox Studio to enable/disable specific tools
 - **Auto-Reconnect**: Robust connection handling with automatic reconnection
+- **Update Check**: Automatic notification when a new version is available
 
 ## 📦 Architecture
 
@@ -79,10 +80,12 @@ Add to your MCP client configuration (Claude Desktop, Cursor, etc.):
 
 The Roblox Studio plugin is **required** for the MCP server to communicate with Roblox Studio.
 
-> **Note**: The plugin is distributed separately. Contact the author for access.
+### 📥 Get the Plugin
+
+**[Download from Roblox Creator Store](https://create.roblox.com/store/asset/83680138548519/PremiumPlugin)**
 
 ### Plugin Setup
-1. Install the plugin in Roblox Studio
+1. Install the plugin in Roblox Studio (from the link above)
 2. Open the **MCP Settings** panel from the toolbar
 3. Configure the server IP (default: `localhost`)
 4. Configure the WebSocket port (default: `3001`)

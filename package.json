@@ -1,6 +1,6 @@
 {
   "name": "roblox-mcp-vitja",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "MCP (Model Context Protocol) Server for Roblox Studio with WebSocket",
   "main": "mcp-server.js",
   "type": "module",
