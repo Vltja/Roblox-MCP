@@ -16,6 +16,7 @@ import { fileURLToPath } from 'url';
 // ========== LOGGING SYSTEM ==========
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+import { checkForUpdates } from './update-check.js';
 const LOG_DIR = path.join(__dirname, 'logs');
 const LOG_FILE = path.join(LOG_DIR, `mcp-server-${new Date().toISOString().slice(0, 10)}.log`);
 
@@ -61,6 +62,9 @@ function cleanOldLogs() {
 }
 
 cleanOldLogs();
+
+// Check for updates on startup
+checkForUpdates();
 log(`[MCP] Log file: ${LOG_FILE}`);
 
 // ========== CONFIGURATION ==========
