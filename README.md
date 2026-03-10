@@ -1,13 +1,12 @@
-# Roblox Studio MCP Server (WebSocket Edition)
+# Roblox Studio MCP Server
 
 A Model Context Protocol (MCP) server for Roblox Studio integration using **WebSocket** for real-time bidirectional communication.
 
 ## 🚀 Features
 
-- **WebSocket Communication**: Direct real-time connection between MCP server and Roblox plugin
-- **No HTTP Polling**: Eliminates latency and resource overhead of polling
-- **15 Roblox Studio Tools**: Complete set of tools for object manipulation, script editing, and more
-- **Tool Whitelist UI**: Built-in control panel to enable/disable specific tools
+- **WebSocket Communication**: Direct real-time connection between MCP server and Roblox Studio
+- **17 Roblox Studio Tools**: Complete set of tools for object manipulation, script editing, and more
+- **Tool Control Panel**: Built-in UI in Roblox Studio to enable/disable specific tools
 - **Auto-Reconnect**: Robust connection handling with automatic reconnection
 
 ## 📦 Architecture
@@ -15,36 +14,44 @@ A Model Context Protocol (MCP) server for Roblox Studio integration using **WebS
 ```
 ┌─────────────────┐     stdio      ┌─────────────────┐
 │   AI (Claude)   │◄──────────────►│   MCP Server    │
-└─────────────────┘                │  (mcp-server.js)│
-                                   └────────┬────────┘
+│   Cursor, etc.  │                │  (mcp-server.js)│
+└─────────────────┘                └────────┬────────┘
                                             │
                                      WebSocket (port 3001)
                                             │
                                    ┌────────▼────────┐
                                    │  Roblox Plugin  │
-                                   │ (MainScript.lua)│
+                                   │  (in Roblox     │
+                                   │   Studio)       │
                                    └─────────────────┘
 ```
 
 ## 🔧 Installation
 
-### 1. Install Dependencies
+### Option 1: Install via npm (Recommended)
 
 ```bash
-cd roblox-studio-mcp
+npm install -g roblox-mcp-vitja
+```
+
+### Option 2: Install from GitHub
+
+```bash
+git clone https://github.com/Vltja/Roblox-MCP.git
+cd Roblox-MCP
 npm install
 ```
 
-### 2. Configure MCP Client
+### Configure MCP Client
 
 Add to your MCP client configuration (Claude Desktop, Cursor, etc.):
 
+**With npm global install:**
 ```json
 {
   "mcpServers": {
     "roblox-studio": {
-      "command": "node",
-      "args": ["/path/to/roblox-studio-mcp/mcp-server.js"],
+      "command": "roblox-mcp-vitja",
       "env": {
         "MCP_WS_PORT": "3001"
       }
@@ -53,58 +60,71 @@ Add to your MCP client configuration (Claude Desktop, Cursor, etc.):
 }
 ```
 
-### 3. Install Roblox Plugin
+**From source:**
+```json
+{
+  "mcpServers": {
+    "roblox-studio": {
+      "command": "node",
+      "args": ["/path/to/Roblox-MCP/mcp-server.js"],
+      "env": {
+        "MCP_WS_PORT": "3001"
+      }
+    }
+  }
+}
+```
 
-1. Open Roblox Studio
-2. Go to **Plugins** → **Open Plugins Folder**
-3. Copy the entire `neue-plugin-architektur` folder or convert to `.rbxm` format
-4. Restart Roblox Studio
+## 🎮 Roblox Studio Plugin
 
-### 4. Connect Plugin to MCP Server
+The Roblox Studio plugin is **required** for the MCP server to communicate with Roblox Studio.
 
-1. In Roblox Studio, open the **MCP Settings** panel from the toolbar
-2. Configure the server IP (default: `localhost`)
-3. Configure the WebSocket port (default: `3001`)
-4. Click **Connect**
+> **Note**: The plugin is distributed separately. Contact the author for access.
+
+### Plugin Setup
+1. Install the plugin in Roblox Studio
+2. Open the **MCP Settings** panel from the toolbar
+3. Configure the server IP (default: `localhost`)
+4. Configure the WebSocket port (default: `3001`)
+5. Click **Connect**
 
 ## 🛠️ Available Tools
 
-| Tool | Description | Safe |
-|------|-------------|------|
-| `tree` | Get object hierarchy tree | ✅ |
-| `get` | Read properties and attributes | ✅ |
-| `copy` | Clone objects | ✅ |
-| `readLine` | Read specific script lines | ✅ |
-| `getScriptInfo` | Get script metadata | ✅ |
-| `scriptSearch` | Search across all scripts | ✅ |
-| `scriptSearchOnly` | Search in specific script | ✅ |
-| `editScript` | Precise string replacement | ✅ |
-| `convertScript` | Convert script type | ✅ |
-| `create` | Create new objects | ⚠️ |
-| `modifyObject` | Modify objects/scripts | ⚠️ |
-| `delete` | Delete objects | ⚠️ |
-| `deleteLines` | Delete script lines | ⚠️ |
-| `insertLines` | Insert script lines | ⚠️ |
-| `multi` | Execute multiple tools | ⚠️ |
+| Tool | Description | Permission |
+|------|-------------|------------|
+| `tree` | Get object hierarchy tree | SAFE |
+| `get` | Read properties and attributes | SAFE |
+| `readLine` | Read specific script lines | SAFE |
+| `getScriptInfo` | Get script metadata | SAFE |
+| `scriptSearch` | Search across all scripts | SAFE |
+| `scriptSearchOnly` | Search in specific script | SAFE |
+| `getConsoleOutput` | Read console output | SAFE |
+| `playtestControl` | Start/Stop Play-Test | SAFE |
+| `copy` | Clone objects | EDIT |
+| `editScript` | Precise string replacement | EDIT |
+| `convertScript` | Convert script type | EDIT |
+| `create` | Create new objects | EDIT |
+| `modifyObject` | Modify objects/scripts | EDIT |
+| `delete` | Delete objects | EDIT |
+| `deleteLines` | Delete script lines | EDIT |
+| `insertLines` | Insert script lines | EDIT |
+| `executeCode` | Execute arbitrary Lua code | EDIT |
 
-## 📁 Project Structure
+## 🖥️ Tool Control Panel (in Plugin UI)
 
-```
-roblox-studio-mcp/
-├── mcp-server.js           # MCP + WebSocket server
-├── package.json            # Node.js dependencies
-├── neue-plugin-architektur/
-│   ├── MainScript.lua      # WebSocket client & orchestration
-│   ├── UIManager.lua       # Settings UI (DockWidget)
-│   ├── ToolControlPanel.lua # Tool whitelist management
-│   ├── EventAPI.lua        # Event bus for tool communication
-│   ├── Helpers.lua         # Utility functions
-│   └── Tools/              # Individual tool implementations
-│       ├── TreeTool.lua
-│       ├── CreateTool.lua
-│       ├── GetTool.lua
-│       └── ... (14 tools)
-```
+The plugin includes a built-in **Tool Control Panel** for managing which tools are enabled:
+
+- **Allow All**: Enable all tools
+- **Safe Only**: Enable only read-only (SAFE) tools
+- **Individual Control**: Enable/disable specific tools
+
+![Tool Control Panel](docs/control-panel.png)
+
+## ⚙️ Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_WS_PORT` | `3001` | WebSocket server port |
 
 ## 🔌 WebSocket Protocol
 
@@ -121,49 +141,21 @@ roblox-studio-mcp/
 }
 ```
 
-### Communication Flow
-
-1. Plugin connects to `ws://localhost:3001`
-2. AI calls tool → MCP Server sends `{type: "command", ...}` via WebSocket
-3. Plugin receives command, executes tool via EventAPI
-4. Plugin sends `{type: "result", ...}` back via WebSocket
-5. MCP Server returns result to AI
-
-## 🖥️ UI Features
-
-### MCP Settings Panel
-- Server IP/Port configuration
-- Connect/Disconnect button
-- Connection status indicator
-- Persistent settings (saved to plugin attributes)
-
-### Tool Control Panel
-- Enable/disable individual tools
-- "Allow All" toggle
-- "Safe Only" preset
-- Visual indication of safe vs. editing tools
-
-## ⚙️ Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MCP_WS_PORT` | `3001` | WebSocket server port |
-
 ## 🐛 Troubleshooting
 
 ### Plugin won't connect
-- Ensure MCP server is running (`node mcp-server.js`)
+- Ensure MCP server is running (`roblox-mcp-vitja` or `node mcp-server.js`)
 - Check firewall settings for port 3001
 - Verify IP address is correct (use `localhost` for local)
 
 ### Tools not executing
-- Open Tool Control Panel and ensure tools are enabled
+- Open Tool Control Panel in Roblox Studio and ensure tools are enabled
 - Check Roblox Studio output window for errors
-
-### WebSocket errors in Roblox
-- Ensure `HttpService:CreateWebStreamClient()` is available (Roblox Studio 2024+)
-- Check network connectivity
 
 ## 📜 License
 
 MIT License
+
+## 👤 Author
+
+Vitja - [GitHub](https://github.com/Vltja)
