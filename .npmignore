@@ -1,0 +1,12 @@
+# Plugin code stays private - NOT published to npm
+neue-plugin-architektur/
+roblox mcp plugin/
+
+# Development files
+logs/
+*.log
+*.rar
+.gitignore
+mcpConfig.bat
+
+# Keep only the MCP server

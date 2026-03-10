@@ -1,0 +1,38 @@
+{
+  "name": "roblox-mcp-vitja",
+  "version": "2.0.0",
+  "description": "MCP (Model Context Protocol) Server for Roblox Studio with WebSocket",
+  "main": "mcp-server.js",
+  "type": "module",
+  "bin": {
+    "roblox-mcp-vitja": "./mcp-server.js"
+  },
+  "scripts": {
+    "start": "node mcp-server.js",
+    "install-deps": "npm install",
+    "test": "node mcp-server.js"
+  },
+  "keywords": [
+    "roblox",
+    "roblox-studio",
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "ai",
+    "api",
+    "websocket"
+  ],
+  "author": "Vitja",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "github:Vltja/Roblox-MCP"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "ws": "^8.19.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

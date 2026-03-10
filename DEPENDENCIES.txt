@@ -1,0 +1,65 @@
+==================================================
+ROBLOX STUDIO MCP - SYSTEM VORAUSSETZUNGEN
+==================================================
+
+1. NODE.JS & NPM
+================
+Erforderlich für den Server und die Kommunikation.
+
+- Getestete Version: Node.js v22.12.0 (LTS) <- DRINGEND EMPFOHLEN!
+- Mindestens: Node.js v18.0.0
+- Download: https://nodejs.org/
+
+HINWEIS: Wenn der MCP-Server in Ihrer KI (Claude/Cursor) nicht startet, installieren Sie bitte exakt die Version v22.12.0. Neuere Versionen könnten Inkompatibilitäten mit dem MCP-SDK aufweisen.
+
+Prüfung im Terminal:
+> node --version
+
+
+2. GOOGLE CHROME
+================
+Erforderlich für das Sicherheits-Dashboard (GUI).
+Der Server öffnet Chrome im "App Mode" für die Steuerung.
+
+
+==================================================
+NPM PAKETE (werden mit 'npm install' installiert)
+==================================================
+
+Diese Pakete sind in der package.json definiert:
+
+1. @modelcontextprotocol/sdk
+   - Kern-Bibliothek für die Kommunikation mit der KI (Claude, etc.)
+
+2. express
+   - Webserver, der die Brücke zwischen KI und Roblox bildet.
+
+3. body-parser
+   - Verarbeitet JSON-Daten (wichtig für große Skripte/Daten).
+
+4. socket.io
+   - Echtzeit-Verbindung zwischen Server und Dashboard GUI.
+
+==================================================
+INSTALLATION & SETUP
+==================================================
+
+1. Projekt herunterladen/klonen.
+2. Terminal im Ordner öffnen.
+3. Befehl ausführen:
+   > npm install
+
+Das installiert alle oben genannten Pakete in den "node_modules" Ordner.
+
+==================================================
+TROUBLESHOOTING
+==================================================
+
+Problem: "npm install" hängt oder bricht ab.
+Lösung: Prüfen Sie Ihre Internetverbindung oder versuchen Sie es als Administrator.
+
+Problem: Dashboard öffnet sich nicht.
+Lösung: Stellen Sie sicher, dass Chrome installiert ist.
+
+Problem: "Missing dependencies".
+Lösung: Löschen Sie den "node_modules" Ordner und führen Sie "npm install" erneut aus.

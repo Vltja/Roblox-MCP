@@ -1,0 +1,14 @@
+# Plugin code stays private - NOT on GitHub
+neue-plugin-architektur/
+roblox mcp plugin/
+
+# Node modules
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Development files
+*.rar
+.DS_Store
