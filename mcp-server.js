@@ -1,12 +1,23 @@
 #!/usr/bin/env node
+/**
+ * MCP SERVER V2 - Mit Router/Broker Architektur
+ * 
+ * Features:
+ * - Lazy-Start: Startet Router automatisch wenn nicht läuft
+ * - Multi-Agent: Mehrere MCPs können sich am Router registrieren
+ * - Fallback: Kann auch direkt ohne Router arbeiten
+ * - UUID-basierte Agent-Identifikation
+ */
+
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { WebSocketServer } from 'ws';
-import { createServer } from 'http';
+import WebSocket from 'ws';
+import { spawn } from 'child_process';
+import net from 'net';
 import crypto from 'crypto';
 import os from 'os';
 import fs from 'fs';
@@ -18,22 +29,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { checkForUpdates } from './update-check.js';
 const LOG_DIR = path.join(__dirname, 'logs');
-const LOG_FILE = path.join(LOG_DIR, `mcp-server-${new Date().toISOString().slice(0, 10)}.log`);
+const LOG_FILE = path.join(LOG_DIR, `mcp-server-v2-${new Date().toISOString().slice(0, 10)}.log`);
 
-// Create logs directory if it doesn't exist
 if (!fs.existsSync(LOG_DIR)) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
-// Log function that writes to both console and file
 function log(message) {
   const timestamp = new Date().toISOString();
   const logLine = `[${timestamp}] ${message}`;
-
-  // Write to stderr (console) - use console.error directly to avoid recursion
   console.error(logLine);
-
-  // Append to log file
   try {
     fs.appendFileSync(LOG_FILE, logLine + '\n');
   } catch (e) {
@@ -41,13 +46,11 @@ function log(message) {
   }
 }
 
-// Clear old logs (keep last 7 days)
 function cleanOldLogs() {
   try {
     const files = fs.readdirSync(LOG_DIR);
     const now = Date.now();
-    const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
-
+    const maxAge = 7 * 24 * 60 * 60 * 1000;
     for (const file of files) {
       const filePath = path.join(LOG_DIR, file);
       const stat = fs.statSync(filePath);
@@ -62,288 +65,317 @@ function cleanOldLogs() {
 }
 
 cleanOldLogs();
-
-// Check for updates on startup
 checkForUpdates();
-log(`[MCP] Log file: ${LOG_FILE}`);
+log(`[MCP-V2] Log file: ${LOG_FILE}`);
 
 // ========== CONFIGURATION ==========
 const CONFIG = {
-  TIMEOUT: 120000,             // 120s timeout for tool execution
-  MAX_RESPONSE_SIZE: 50 * 1024 * 1024,  // 50MB max response
-  WEBSOCKET_PORT: process.env.MCP_WS_PORT || 3001
+  TIMEOUT: 120000,
+  MAX_RESPONSE_SIZE: 50 * 1024 * 1024,
+  PLUGIN_PORT: parseInt(process.env.MCP_PLUGIN_PORT) || 3001,
+  ROUTER_PORT: parseInt(process.env.MCP_ROUTER_PORT) || 4000,
+  RECONNECT_INTERVAL: 5000,
+  MAX_RECONNECT_ATTEMPTS: 10
 };
 
-log('[MCP WEBSOCKET] Roblox Studio MCP Server mit WebSocket startet...');
-log(`[MCP WEBSOCKET] WebSocket Port: ${CONFIG.WEBSOCKET_PORT}`);
-log(`[MCP WEBSOCKET] Timeout: ${CONFIG.TIMEOUT}ms`);
+// ========== AGENT IDENTITY ==========
+const AGENT_ID = crypto.randomUUID();
+log(`[MCP-V2] Agent ID: ${AGENT_ID}`);
 
-// ========== WEBSOCKET SERVER ==========
-// Multi-Client Unterstützung: studio und playtest
-let connectedClients = {
-  studio: null,
-  playtest: null,
-  playtest_server: null,
-  playtest_client: null
-};
-let pendingRequests = new Map(); // requestId -> { resolve, reject, timeout, context }
+// ========== STATE ==========
+let routerWs = null;
+let routerProcess = null;
+let isConnected = false;
+let pendingRequests = new Map();
+let reconnectAttempts = 0;
 
-const httpServer = createServer();
-const wss = new WebSocketServer({ server: httpServer });
-
-// ========== DEBUG LOGGING FOR WEBSOCKET HANDSHAKE DIAGNOSIS ==========
-// These handlers catch requests BEFORE the ws library processes them
-
-// 1. Log ALL HTTP requests to the server
-httpServer.on('request', (req, res) => {
-  log('\n[DEBUG HTTP] ========== INCOMING HTTP REQUEST ==========');
-  log(`[DEBUG HTTP] Method: ${req.method}`);
-  log(`[DEBUG HTTP] URL: ${req.url}`);
-  log(`[DEBUG HTTP] Remote Address: ${req.socket.remoteAddress}`);
-  log('[DEBUG HTTP] Headers:', JSON.stringify(req.headers, null, 2));
-  
-  // Log response status when sent
-  const originalWriteHead = res.writeHead.bind(res);
-  res.writeHead = function(statusCode, ...args) {
-    log(`[DEBUG HTTP] Response Status: ${statusCode}`);
-    return originalWriteHead(statusCode, ...args);
-  };
-});
-
-// 2. Log WebSocket UPGRADE requests specifically (this fires BEFORE ws library)
-httpServer.on('upgrade', (req, socket, head) => {
-  log('\n[DEBUG UPGRADE] ========== WEBSOCKET UPGRADE REQUEST ==========');
-  log(`[DEBUG UPGRADE] Method: ${req.method}`);
-  log(`[DEBUG UPGRADE] URL: ${req.url}`);
-  log(`[DEBUG UPGRADE] HTTP Version: ${req.httpVersion}`);
-  log(`[DEBUG UPGRADE] Remote Address: ${req.socket.remoteAddress}`);
-  log(`[DEBUG UPGRADE] Remote Port: ${req.socket.remotePort}`);
-  log('[DEBUG UPGRADE] ========== ALL HEADERS ==========');
-  for (const [key, value] of Object.entries(req.headers)) {
-    log(`[DEBUG UPGRADE]   ${key}: ${value}`);
-  }
-  log('[DEBUG UPGRADE] ================================');
-  
-  // Log raw head buffer (contains any data sent before upgrade completes)
-  log(`[DEBUG UPGRADE] Head buffer length: ${head ? head.length : 0}`);
-  
-  // Monitor socket errors during upgrade
-  socket.on('error', (err) => {
-    log(`[DEBUG UPGRADE] Socket Error during upgrade: ${err.message}`);
-    log(`[DEBUG UPGRADE] Socket Error stack: ${err.stack}`);
+// ========== PORT CHECK & ROUTER START ==========
+function checkPort(port) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    const timeout = setTimeout(() => {
+      socket.destroy();
+      resolve(false);
+    }, 1000);
+    
+    socket.connect(port, 'localhost', () => {
+      clearTimeout(timeout);
+      socket.destroy();
+      resolve(true);
+    });
+    
+    socket.on('error', () => {
+      clearTimeout(timeout);
+      resolve(false);
+    });
   });
-});
-
-// 3. WebSocket Server error handling (catches protocol-level errors)
-wss.on('error', (error) => {
-  log('\n[DEBUG WSS] ========== WEBSOCKET SERVER ERROR ==========');
-  log(`[DEBUG WSS] Error: ${error.message}`);
-  log(`[DEBUG WSS] Error Code: ${error.code}`);
-  log(`[DEBUG WSS] Stack: ${error.stack}`);
-});
-
-// 4. Log when ws library rejects a connection (headers event fires before connection)
-wss.on('headers', (headers, req) => {
-  log('\n[DEBUG WSS] ========== SENDING RESPONSE HEADERS ==========');
-  log('[DEBUG WSS] Response Headers:', headers);
-  log(`[DEBUG WSS] Request URL: ${req.url}`);
-  log(`[DEBUG WSS] Request Headers Host: ${req.headers.host}`);
-  log(`[DEBUG WSS] Upgrade: ${req.headers.upgrade}`);
-  log(`[DEBUG WSS] Connection: ${req.headers.connection}`);
-  log(`[DEBUG WSS] Sec-WebSocket-Key: ${req.headers['sec-websocket-key']}`);
-  log(`[DEBUG WSS] Sec-WebSocket-Version: ${req.headers['sec-websocket-version']}`);
-  log(`[DEBUG WSS] Sec-WebSocket-Protocol: ${req.headers['sec-websocket-protocol']}`);
-  log(`[DEBUG WSS] Sec-WebSocket-Extensions: ${req.headers['sec-websocket-extensions']}`);
-});
-
-// 5. Log connection close during handshake
-httpServer.on('close', () => {
-  log('[DEBUG HTTP] HTTP Server closed');
-});
-
-httpServer.on('clientError', (exception, socket) => {
-  log('\n[DEBUG HTTP] ========== CLIENT ERROR ==========');
-  log(`[DEBUG HTTP] Exception: ${exception.message}`);
-  log(`[DEBUG HTTP] Exception Code: ${exception.code}`);
-  log(`[DEBUG HTTP] Remote Address: ${socket.remoteAddress}`);
-});
-
-log('[DEBUG] WebSocket debug logging enabled');
-log('[DEBUG] Watch for [DEBUG UPGRADE] messages to see what Roblox is sending');
-log('[DEBUG] Watch for [DEBUG WSS] messages to see what the ws library responds');
-
-
-wss.on('connection', (ws, req) => {
-  const clientIp = req.socket.remoteAddress;
-  log(`[MCP WEBSOCKET] Neue Verbindung von: ${clientIp}`);
-
-  // Client Context wird per register message gesetzt
-  let clientContext = null;
-
-  ws.on('message', (data) => {
-    try {
-      const message = JSON.parse(data.toString());
-      log(`[MCP WEBSOCKET] Nachricht empfangen: ${message.type}`);
-
-      // Client registriert sich mit Context
-      if (message.type === 'register' && message.context) {
-        clientContext = message.context;
-        connectedClients[clientContext] = ws;
-        log(`[MCP WEBSOCKET] Client registriert als: ${clientContext}`);
-
-        // Bestätigung senden
-        ws.send(JSON.stringify({ type: 'registered', context: clientContext }));
-        return;
-      }
-
-      if (message.type === 'result' && message.id) {
-        // Result from plugin
-        const pending = pendingRequests.get(message.id);
-        if (pending) {
-          clearTimeout(pending.timeout);
-          pendingRequests.delete(message.id);
-
-          if (message.error) {
-            pending.reject(new Error(message.error));
-          } else {
-            pending.resolve(message.result);
-          }
-        }
-      } else if (message.type === 'pong') {
-        // Keepalive response
-        log('[MCP WEBSOCKET] Pong empfangen');
-      }
-    } catch (error) {
-      log(`[MCP WEBSOCKET] Parse-Fehler: ${error.message}`);
-    }
-  });
-
-  ws.on('close', () => {
-    log(`[MCP WEBSOCKET] Client getrennt: ${clientContext || 'unregistriert'}`);
-    if (clientContext && connectedClients[clientContext] === ws) {
-      connectedClients[clientContext] = null;
-    }
-
-    // Reject pending requests for this context
-    for (const [id, pending] of pendingRequests.entries()) {
-      if (!clientContext || pending.context === clientContext) {
-        clearTimeout(pending.timeout);
-        pendingRequests.delete(id);
-        pending.reject(new Error('Plugin disconnected'));
-      }
-    }
-  });
-
-  ws.on('error', (error) => {
-    log(`[MCP WEBSOCKET] WebSocket Fehler: ${error.message}`);
-  });
-
-  // Send initial ping (delayed to allow Roblox client to finish handshake)
-  setTimeout(() => {
-    if (ws.readyState === 1) { // 1 = OPEN
-      ws.send(JSON.stringify({ type: 'ping' }));
-    }
-  }, 100);
-});
-
-// Start WebSocket Server
-httpServer.listen(CONFIG.WEBSOCKET_PORT, () => {
-  log(`[MCP WEBSOCKET] ✅ WebSocket Server läuft auf Port ${CONFIG.WEBSOCKET_PORT}`);
-});
-
-// Keepalive Interval (every 30s) - für alle verbundenen Clients
-setInterval(() => {
-  for (const [context, client] of Object.entries(connectedClients)) {
-    if (client && client.readyState === 1) {
-      client.send(JSON.stringify({ type: 'ping' }));
-    }
-  }
-}, 30000);
-
-// ========== STRING ENCODING SYSTEM ==========
-function unifiedEncode(str) {
-  if (!str || typeof str !== 'string') return str;
-
-  try {
-    const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
-    if (base64Regex.test(str) && str.length >= 4) {
-      try {
-        const decoded = Buffer.from(str, 'base64').toString('utf-8');
-        if (decoded && decoded !== str) {
-          return str;
-        }
-      } catch (e) {}
-    }
-
-    return Buffer.from(str, 'utf-8').toString('base64');
-  } catch (error) {
-    log('[Base64] Encode error:', error.message);
-    return str;
-  }
 }
 
-function unifiedDecode(str) {
-  if (!str || typeof str !== 'string') return str;
-
-  if (str.startsWith('✅') || str.startsWith('[SUCCESS]') ||
-      str.startsWith('[ERROR]') || str.startsWith('[DEBUG]') ||
-      str.startsWith('[INFO]') || str.startsWith('[WARNING]')) {
-    return str;
-  }
-
-  const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
-  if (!base64Regex.test(str) || str.length < 4) {
-    return str;
-  }
-
-  try {
-    const decoded = Buffer.from(str, 'base64').toString('utf-8');
-
-    if (!decoded || decoded.length === 0) {
-      console.warn('[Base64] Decode resulted in empty string, returning original');
-      return str;
-    }
-
-    return decoded;
-  } catch (error) {
-    log('[Base64] Decode error:', error.message);
-    return str;
-  }
-}
-
-// ========== WEBSOCKET TOOL EXECUTION ==========
-async function executeToolViaWebSocket(tool, args, context = 'studio') {
+function waitForPort(port, maxWait = 10000) {
   return new Promise((resolve, reject) => {
-    const client = connectedClients[context];
-
-    if (!client || client.readyState !== 1) {
-      if (context === 'playtest_server' || context === 'playtest_client') {
-        reject(new Error(`${context} nicht verbunden. Starte einen Play-Test um diesen Context zu nutzen.`));
-      } else {
-        reject(new Error('Roblox Plugin nicht verbunden. Bitte verbinden Sie das Plugin zuerst.'));
+    const startTime = Date.now();
+    
+    const checkInterval = setInterval(async () => {
+      const isReady = await checkPort(port);
+      
+      if (isReady) {
+        clearInterval(checkInterval);
+        log(`[MCP-V2] Port ${port} ist bereit`);
+        resolve(true);
+      } else if (Date.now() - startTime > maxWait) {
+        clearInterval(checkInterval);
+        reject(new Error(`Timeout waiting for port ${port}`));
       }
+    }, 500);
+  });
+}
+
+// ========== ROUTER START ==========
+async function startRouter() {
+  log('[MCP-V2] Starte Router als Child Process...');
+
+  // Prüfe ob bereits ein Router läuft
+  const routerPortReady = await checkPort(CONFIG.ROUTER_PORT);
+  if (routerPortReady) {
+    log('[MCP-V2] Router läuft bereits - kein Neustart nötig');
+    return;
+  }
+
+  // Starte Router als Child Process
+  routerProcess = spawn('node', ['router-server.js'], {
+    cwd: __dirname,
+    stdio: 'inherit',
+    env: { ...process.env }
+  });
+
+  routerProcess.on('error', (err) => {
+    log(`[MCP-V2] Router Process Error: ${err.message}`);
+  });
+
+  routerProcess.on('exit', (code, signal) => {
+    log(`[MCP-V2] Router Process beendet: code=${code}, signal=${signal}`);
+    routerProcess = null;
+  });
+
+  // Warte bis beide Ports bereit sind
+  try {
+    await waitForPort(CONFIG.PLUGIN_PORT, 10000);
+    log('[MCP-V2] ✅ Router Plugin-Port bereit');
+  } catch (e) {
+    log(`[MCP-V2] ❌ Plugin-Port Timeout: ${e.message}`);
+    throw e;
+  }
+
+  try {
+    await waitForPort(CONFIG.ROUTER_PORT, 5000);
+    log('[MCP-V2] ✅ Router MCP-Port bereit');
+  } catch (e) {
+    log(`[MCP-V2] ⚠️ Router MCP-Port nicht bereit: ${e.message}`);
+    throw e;
+  }
+
+  log('[MCP-V2] ✅ Router gestartet');
+}
+
+async function ensureRouterRunning() {
+  log('[MCP-V2] Prüfe ob Router läuft...');
+
+  // Prüfe Plugin-Port (3001)
+  const pluginPortReady = await checkPort(CONFIG.PLUGIN_PORT);
+
+  if (!pluginPortReady) {
+    log('[MCP-V2] Router läuft nicht - starte Router...');
+    await startRouter();
+  } else {
+    log('[MCP-V2] ✅ Router läuft bereits');
+  }
+
+  // Prüfe auch MCP-Port (4000)
+  try {
+    await waitForPort(CONFIG.ROUTER_PORT, 5000);
+    log('[MCP-V2] ✅ Router MCP-Port bereit');
+  } catch (e) {
+    log(`[MCP-V2] ⚠️ Router MCP-Port nicht bereit: ${e.message}`);
+  }
+}
+
+// ========== HEALTH CHECK + AUTO-RECOVERY ==========
+async function ensureRouterConnection() {
+  log('[MCP-V2] Health Check: Prüfe Router-Verbindung...');
+
+  // 1. Prüfe ob Router-Port (4000) erreichbar ist
+  const routerPortReady = await checkPort(CONFIG.ROUTER_PORT);
+
+  if (!routerPortReady) {
+    log('[MCP-V2] Health Check: Router-Port nicht erreichbar');
+
+    // Router neu starten
+    try {
+      await startRouter();
+    } catch (error) {
+      throw new Error(`Router konnte nicht gestartet werden: ${error.message}`);
+    }
+  }
+
+  // 2. WebSocket Verbindung prüfen/herstellen
+  if (!isConnected || !routerWs || routerWs.readyState !== 1) {
+    log('[MCP-V2] Health Check: WebSocket nicht verbunden - verbinde...');
+
+    try {
+      await connectToRouter();
+      log('[MCP-V2] Health Check: ✅ WebSocket verbunden');
+    } catch (error) {
+      throw new Error(`WebSocket Verbindung fehlgeschlagen: ${error.message}`);
+    }
+  } else {
+    log('[MCP-V2] Health Check: ✅ Bereits verbunden');
+  }
+}
+
+// ========== ROUTER CONNECTION ==========
+function connectToRouter() {
+  return new Promise((resolve, reject) => {
+    const routerUrl = `ws://localhost:${CONFIG.ROUTER_PORT}`;
+    log(`[MCP-V2] Verbinde zu Router: ${routerUrl}`);
+    
+    routerWs = new WebSocket(routerUrl);
+    
+    routerWs.on('open', () => {
+      log('[MCP-V2] WebSocket Verbindung zum Router hergestellt');
+      
+      // Registriere Agent
+      const registerMsg = {
+        type: 'register',
+        agentId: AGENT_ID
+      };
+      routerWs.send(JSON.stringify(registerMsg));
+      log(`[MCP-V2] Registriere Agent: ${AGENT_ID}`);
+    });
+    
+    routerWs.on('message', (data) => {
+      try {
+        const message = JSON.parse(data.toString());
+        handleRouterMessage(message, resolve);
+      } catch (error) {
+        log(`[MCP-V2] Parse-Fehler: ${error.message}`);
+      }
+    });
+    
+    routerWs.on('close', () => {
+      log('[MCP-V2] Router Verbindung geschlossen');
+      isConnected = false;
+      
+      // Reject alle pending requests
+      for (const [id, pending] of pendingRequests.entries()) {
+        clearTimeout(pending.timeout);
+        pending.reject(new Error('Router Verbindung verloren'));
+      }
+      pendingRequests.clear();
+      
+      // Versuche Reconnect
+      scheduleReconnect();
+    });
+    
+    routerWs.on('error', (error) => {
+      log(`[MCP-V2] WebSocket Fehler: ${error.message}`);
+      reject(error);
+    });
+  });
+}
+
+function handleRouterMessage(message, registrationResolve) {
+  // Registrierungs-Bestätigung
+  if (message.type === 'registered' && message.agentId === AGENT_ID) {
+    log(`[MCP-V2] ✅ Agent registriert: ${message.agentId}`);
+    isConnected = true;
+    reconnectAttempts = 0;
+    if (registrationResolve) registrationResolve(true);
+    return;
+  }
+  
+  // Result von Plugin
+  if (message.type === 'result' && message.id) {
+    const pending = pendingRequests.get(message.id);
+    if (pending) {
+      clearTimeout(pending.timeout);
+      pendingRequests.delete(message.id);
+
+      // Base64 decodieren wenn encoded flag gesetzt
+      let result = message.result;
+      let error = message.error;
+
+      if (message.encoded) {
+        if (result) {
+          result = Buffer.from(result, 'base64').toString('utf-8');
+        }
+        if (error) {
+          error = Buffer.from(error, 'base64').toString('utf-8');
+        }
+      }
+
+      if (error) {
+        pending.reject(new Error(error));
+      } else {
+        pending.resolve(result);
+      }
+      log(`[MCP-V2] Result erhalten für Request ${message.id}`);
+    }
+    return;
+  }
+  
+  // Ping/Pong
+  if (message.type === 'ping') {
+    routerWs.send(JSON.stringify({ type: 'pong' }));
+    return;
+  }
+}
+
+function scheduleReconnect() {
+  if (reconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
+    log(`[MCP-V2] Max Reconnect-Versuche erreicht (${CONFIG.MAX_RECONNECT_ATTEMPTS})`);
+    return;
+  }
+  
+  reconnectAttempts++;
+  log(`[MCP-V2] Reconnect in ${CONFIG.RECONNECT_INTERVAL}ms (Versuch ${reconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS})`);
+  
+  setTimeout(async () => {
+    try {
+      await connectToRouter();
+    } catch (e) {
+      log(`[MCP-V2] Reconnect fehlgeschlagen: ${e.message}`);
+    }
+  }, CONFIG.RECONNECT_INTERVAL);
+}
+
+// ========== TOOL EXECUTION VIA ROUTER ==========
+async function executeToolViaRouter(tool, args) {
+  return new Promise((resolve, reject) => {
+    if (!isConnected || !routerWs || routerWs.readyState !== 1) {
+      reject(new Error('Nicht mit Router verbunden'));
       return;
     }
-
+    
     const requestId = crypto.randomUUID();
-
+    
     const command = {
       type: 'command',
+      agentId: AGENT_ID,
       id: requestId,
       tool: tool,
       params: args
     };
-
+    
     const timeoutId = setTimeout(() => {
       pendingRequests.delete(requestId);
-      reject(new Error(`Timeout: Keine Antwort vom ${context} Plugin nach ${CONFIG.TIMEOUT / 1000}s`));
+      reject(new Error(`Timeout: Keine Antwort vom Plugin nach ${CONFIG.TIMEOUT / 1000}s`));
     }, CONFIG.TIMEOUT);
-
-    pendingRequests.set(requestId, { resolve, reject, timeout: timeoutId, context });
-
+    
+    pendingRequests.set(requestId, { resolve, reject, timeout: timeoutId });
+    
     try {
-      client.send(JSON.stringify(command));
-      log(`[MCP WEBSOCKET] Command gesendet: ${tool} (${requestId}) an ${context}`);
+      routerWs.send(JSON.stringify(command));
+      log(`[MCP-V2] Command gesendet: ${tool} (${requestId})`);
     } catch (error) {
       clearTimeout(timeoutId);
       pendingRequests.delete(requestId);
@@ -352,11 +384,17 @@ async function executeToolViaWebSocket(tool, args, context = 'studio') {
   });
 }
 
+// ========== STRING ENCODING SYSTEM ==========
+function unifiedEncode(str) {
+  if (!str || typeof str !== 'string') return str;
+  return Buffer.from(str, 'utf-8').toString('base64');
+}
+
 // ========== MCP SERVER SETUP ==========
 const server = new Server(
   {
-    name: 'roblox-studio',
-    version: '2.0.0-websocket',
+    name: 'roblox-studio-v2',
+    version: '2.1.0-router',
   },
   {
     capabilities: {
@@ -365,140 +403,111 @@ const server = new Server(
   }
 );
 
-// ========== TOOL LIST ==========
+// ========== TOOL LIST (same as original) ==========
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
         name: 'studio_status',
-        description: 'Zeigt den Status des Play-Tests. Gibt "playtest" zurück wenn ein Play-Test aktiv ist, oder "playtest stop" wenn kein Play-Test läuft. Die Logik ist im MCP Server - keine Plugin-Kommunikation nötig.',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
+        description: 'Checks the current status of the Roblox Studio session.\nReturns "playtest" if a simulation is active, or "playtest stop" if in edit mode.\nUseful for checking if you are in the correct mode before executing context-sensitive commands.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
       },
       {
         name: 'get_console_output',
-        description: 'Liest Console-Output (Logs) aus dem Spiel via LogService. Zeigt alle Logs seit Session-Start. Funktioniert in Studio UND Play-Test.',
+        description: `Reads Console Output (Logs) from the game via LogService.
+Shows logs since session start. Works in Studio AND Play-Test.
+
+BEST PRACTICES:
+- Call this AFTER playtest_control(action="start") to verify your code.
+- Use filter='error' to quickly find bugs.
+- Use filter='print' to see your debug messages.
+- NOTE: If you just started a Play-Test, wait a moment before calling this to ensure scripts have run and errors are caught.`,
         inputSchema: {
           type: 'object',
           properties: {
-            limit: {
-              type: 'number',
-              description: 'Maximale Anzahl an Logs (neueste zuerst). Default: 50. Max: 200.',
-            },
-            filter: {
-              type: 'string',
-              description: "Filter-Typ: 'all', 'print', 'warning', 'error'. Default: 'all'",
-            },
-            search: {
-              type: 'string',
-              description: 'Suchstring - nur Logs die diesen Text enthalten',
-            },
-            context: {
-              type: 'string',
-              enum: ['studio', 'playtest_server', 'playtest_client'],
-              description: 'Wo die Logs lesen: "studio" (Edit-Modus), "playtest_server" (Server), "playtest_client" (Client). Default: playtest_server',
-            },
+            limit: { type: 'number', description: 'Maximale Anzahl an Logs (neueste zuerst). Default: 50. Max: 200.' },
+            filter: { type: 'string', description: "Filter-Typ: 'all', 'print', 'warning', 'error'. Default: 'all'" },
+            search: { type: 'string', description: 'Suchstring - nur Logs die diesen Text enthalten' },
+            context: { type: 'string', enum: ['studio', 'playtest_server', 'playtest_client'], description: 'Wo die Logs lesen. Default: playtest_server' },
           },
         },
       },
       {
         name: 'get_connection_info',
-        description: 'Get the local IP address and WebSocket port for connecting the Roblox plugin. Use this to tell the user what IP and port to enter in the Roblox plugin settings.',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
+        description: 'Get the local IP address and WebSocket port for connecting the Roblox plugin.\nUse this to tell the user what IP and port to enter in the Roblox plugin settings.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
       },
       {
         name: 'playtest_control',
-        description: 'Startet oder stoppt einen Play-Test. Nutzt plugin:StartSimulation() und plugin:StopSimulation(). Nur im Studio Context verfügbar.',
+        description: `Starts or stops a Play-Test simulation.
+Uses plugin:StartSimulation() and plugin:StopSimulation().
+Only available in Studio context (Edit Mode).
+
+DEBUGGING WORKFLOW (TEST-DRIVEN DEVELOPMENT):
+1. Make changes to scripts (editScript/modifyObject).
+2. Call playtest_control(action="start").
+3. WAITING: The game needs a moment to start. Logs might not appear immediately.
+4. In the NEXT turn (or after a delay): Call get_console_output() to check for errors.
+5. Call playtest_control(action="stop") to fix bugs.`,
         inputSchema: {
           type: 'object',
           properties: {
-            action: {
-              type: 'string',
-              enum: ['start', 'stop'],
-              description: 'Aktion: "start" startet Play-Test (wie F5), "stop" beendet Play-Test (wie Shift+F5)',
-            },
+            action: { type: 'string', enum: ['start', 'stop'], description: 'Aktion: "start" oder "stop"' },
           },
           required: ['action'],
         },
       },
       {
         name: 'tree',
-        description: 'Get the hierarchy tree of any Roblox object with pagination and depth control.\n\nParameters:\n- path: Object path (e.g. "workspace")\n- depth: Number of levels (1, 2, 3...) or "all" for unlimited\n- maxItems: Max items per level (default 50) or "all"\n- offset: Start from item N (for pagination)\n- count: How many items to show\n\nExamples:\n- tree workspace → Basic view\n- tree workspace depth=2 → 2 levels\n- tree workspace depth=all maxItems=all → Everything\n- tree workspace offset=20 count=20 → Items 21-40',
+        description: `Get the hierarchy tree of any Roblox object.
+Use "depth" and "maxItems" to limit the output and save context window space.
+
+GOOD USAGE:
+- tree(path="workspace", depth=2, maxItems=20) -> ✅ EFFICIENT
+- tree(path="workspace", depth="all") -> ❌ CAUTION (Might be too large)`,
         inputSchema: {
           type: 'object',
           properties: {
-            path: {
-              type: 'string',
-              description: 'Path to the Roblox object. Examples: "workspace", "workspace.Model", "game.ReplicatedStorage"',
-            },
-            depth: {
-              type: 'string',
-              description: 'Depth level: 1, 2, 3... or "all" for unlimited depth',
-            },
-            maxItems: {
-              type: 'string',
-              description: 'Max items per level (default 50) or "all" for unlimited',
-            },
-            offset: {
-              type: 'number',
-              description: 'Start from item N (for pagination)',
-            },
-            count: {
-              type: 'number',
-              description: 'How many items to show',
-            },
+            path: { type: 'string', description: 'Path to the Roblox object. Examples: "workspace", "workspace.Model"' },
+            depth: { type: 'string', description: 'Depth level: 1, 2, 3... or "all" for unlimited depth' },
+            maxItems: { type: 'string', description: 'Max items per level (default 50) or "all" for unlimited' },
+            offset: { type: 'number', description: 'Start from item N (for pagination)' },
+            count: { type: 'number', description: 'How many items to show' },
           },
           required: ['path'],
         },
       },
       {
         name: 'create',
-        description: 'Create a new Roblox object (Part, Script, Model, etc.). The source parameter accepts multi-line strings with ALL characters preserved exactly (Base64-encoded internally for safe transport).',
+        description: `Create a new Roblox object (Part, Script, Model, etc.).
+Supports batch creation with loop variables.
+
+LUA CODE RULES:
+- The code runs in a sandbox where 'obj' is the newly created instance.
+- You MUST use 'obj' to set properties. Example: "obj.Name = 'Test' obj.Transparency = 0.5" (NOT just "Transparency = 0.5").
+- FOR SCRIPTS: If creating a Script/LocalScript via luaCode, set the source code using "obj.Source".
+  Example: "obj.Source = 'print(\"Hello World\")'"
+
+TIPS:
+- Use "count" and "loopVars" to create multiple objects in ONE call.
+
+GOOD USAGE EXAMPLE (Batch):
+- create(count=10, loopVars={"i": {"start":1, "step":1}}, luaCode="obj.Name = 'Part_'..i obj.Position = Vector3.new(i*2, 0, 0)")`,
         inputSchema: {
           type: 'object',
           properties: {
-            className: {
-              type: 'string',
-              description: 'The Roblox class name to create. Examples: "Part", "Script", "Model"',
-            },
-            name: {
-              type: 'string',
-              description: 'The name of the new object',
-            },
-            parent: {
-              type: 'string',
-              description: 'Path to the parent object. Examples: "workspace", "game.ReplicatedStorage"',
-            },
-            properties: {
-              type: 'object',
-              description: 'Properties to set on the object. Supports: Vector3 as "x, y, z", Color3 as "r, g, b" (0-255), Boolean as "true"/"false", Numbers, Strings. Example: {"Size": "10, 2, 10", "Anchored": "true", "Transparency": "0.5"}',
-            },
-            attributes: {
-              type: 'object',
-              description: 'Custom attributes to set on the object. Example: {"Health": 100, "Damage": 25, "Owner": "Player1"}',
-            },
+            className: { type: 'string', description: 'The Roblox class name to create. Examples: "Part", "Script", "Model"' },
+            name: { type: 'string', description: 'The name of the new object. Use {i} or $i for loop variable substitution in batch mode.' },
+            parent: { type: 'string', description: 'Path to the parent object. Examples: "workspace", "game.ReplicatedStorage"' },
             luaCode: {
               type: 'string',
-              description: 'Lua code for complex property/attribute operations. Uses ModuleScript proxy. Example: "obj.Size = Vector3.new(10,2,10) obj.Anchored = true obj:SetAttribute(\'Health\', 100)". (Base64-encoded internally for safe JSON transport)',
+              description: 'Lua code to configure the object. Use "obj" to access the created object. Examples: "obj.Size = Vector3.new(4,4,4)\\nobj.Color = Color3.new(1,0,0)\\nobj.Anchored = true". Loop variables (e.g. "i") are available in batch mode.'
             },
-            source: {
-              type: 'string',
-              description: 'Source code (for Script objects - ONLY use if className is a Script type like "Script", "LocalScript", "ModuleScript"). ALL characters are preserved exactly as provided. Use real newlines for line breaks, use \\n within strings when you want Lua to interpret it as an escape sequence. (Base64-encoded internally for safe JSON transport)',
-            },
-            count: {
-              type: 'number',
-              description: 'Optional: Create multiple instances (batch mode). Example: 10 to create 10 objects.',
-            },
+            source: { type: 'string', description: 'Source code (for Script objects).' },
+            count: { type: 'number', description: 'Optional: Create multiple instances (batch mode).' },
             loopVars: {
               type: 'object',
-              description: 'Optional: Define loop variables for batch mode. Keys are variable names, values are objects with "start" and "step". Example: {"x": {"start": 0, "step": 2}, "rot": {"start": 0, "step": 15}}. These variables can be used in "properties" values.',
+              description: 'Optional: Define loop variables for batch mode. Formats: {"i": "0..9"} (range), {"i": {"start": 0, "step": 2}}, or {"i": [0,1,2,3,...]} (array).'
             },
           },
           required: ['className', 'name', 'parent'],
@@ -506,285 +515,249 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'get',
-        description: 'Read properties and attributes from a Roblox object.',
+        description: 'Read properties and attributes from a Roblox object.\nReturns the values of the requested properties (e.g., Size, Position, Color).',
         inputSchema: {
           type: 'object',
           properties: {
-            path: {
-              type: 'string',
-              description: 'Path to the Roblox object. Examples: "workspace.Part1", "game.ReplicatedStorage.Script"',
-            },
-            attributes: {
-              type: 'array',
-              description: 'Array of attribute/property names to read. Examples: ["Size", "Color", "Anchored"]',
-              items: {
-                type: 'string',
-              },
-            },
+            path: { type: 'string', description: 'Path to the Roblox object.' },
+            attributes: { type: 'array', items: { type: 'string' }, description: 'Array of attribute/property names to read.' },
           },
           required: ['path', 'attributes'],
         },
       },
       {
         name: 'modifyObject',
-        description: `Modify an existing Roblox object (properties, source, attributes).\n\nCRITICAL - Script Source Editing:\n⚠️  Use modifyObject to change "source" parameter ONLY when replacing MORE THAN 50% of the script\n⚠️  For small changes (single lines, functions, variables), ALWAYS use editScript instead\n⚠️  modifyObject replaces the ENTIRE script source - all existing code is permanently lost!\n\nWHEN TO USE modifyObject with source parameter:\n✅ Complete script rewrite (creating new script from scratch)\n✅ Changing more than 50% of existing code\n✅ Initial script content creation\n\nWHEN TO USE editScript instead:\n✅ Changing single lines or specific functions (< 50% of code)\n✅ Updating specific variables, strings, or values\n✅ Modifying parts of code while preserving the rest\n✅ Any targeted change that doesn\'t require full rewrite\n\nFor properties and attributes:\n✅ Use luaCode parameter with obj. assignments for maximum flexibility\n✅ Supports all Roblox data types automatically`,
+        description: `Modify an existing Roblox object (properties, source, attributes).
+
+CRITICAL - SCRIPT SOURCE EDITING RULES:
+⚠️  Use modifyObject to change "source" parameter ONLY when replacing MORE THAN 50% of the script.
+⚠️  For small changes (single lines, functions, variables), ALWAYS use editScript instead.
+⚠️  modifyObject replaces the ENTIRE script source - all existing code is permanently lost!
+
+WHEN TO USE modifyObject with source parameter:
+✅ Complete script rewrite (creating new script from scratch).
+✅ Changing more than 50% of existing code.
+✅ Initial script content creation.
+
+BAD USAGE EXAMPLE (DO NOT DO THIS):
+- Task: "Change health to 200"
+- Action: modifyObject(source="...entire 500 lines of code just to change one number...") -> ❌ WASTEFUL & DANGEROUS
+
+GOOD USAGE EXAMPLE:
+- Task: "Rewrite the entire movement system"
+- Action: modifyObject(source="...new complete code...") -> ✅ CORRECT`,
         inputSchema: {
           type: 'object',
           properties: {
-            path: {
-              type: 'string',
-              description: 'Path to the Roblox object. Examples: "workspace.Part1", "game.ReplicatedStorage.Script"',
-            },
-            luaCode: {
-              type: 'string',
-              description: 'Lua code for modifying properties and attributes. Only obj. and obj:SetAttribute() allowed. Example: "obj.Size = Vector3.new(10,2,10)\\nobj.Transparency = 0.5\\nobj:SetAttribute(\\"MaxHealth\\", 500)". (Base64-encoded internally for safe JSON transport)',
-            },
-            source: {
-              type: 'string',
-              description: 'Source code (for Script objects - replaces ENTIRE script source). IMPORTANT: This completely replaces the script content. ALL characters are preserved exactly as provided. Use real newlines for line breaks, use \\n within strings when you want Lua to interpret it as an escape sequence. (Base64-encoded internally for safe JSON transport)',
-            },
+            path: { type: 'string', description: 'Path to the Roblox object.' },
+            luaCode: { type: 'string', description: 'Lua code for modifying properties and attributes.' },
+            source: { type: 'string', description: 'Source code (for Script objects - replaces ENTIRE script source).' },
           },
           required: ['path'],
         },
       },
       {
         name: 'editScript',
-        description: `Precise script editing with string replacement.\n\n⚠️  MANDATORY: Use readLine() BEFORE editScript() to read target lines\n\nWORKFLOW:\n1. readLine({path: "Script", startLine: 5, endLine: 10})\n2. Find text you want to change in the output\n3. editScript({path: "Script", old_string: "old text", new_string: "new text"})\n4. readLine() again to verify changes\n\nRULES:\n- CRITICAL: old_string must match the file content BIT-BY-BIT. If readLine returns 4 spaces indentation, old_string MUST have 4 spaces. Do not trim or format.\n- old_string must be from the readLine output (WITHOUT "Line X: " prefix)\n- Use real newlines for line breaks, use \\n within strings when you want Lua to interpret it as an escape sequence\n- Use editScript for <50% changes, modifyObject for >50% rewrites\n- (Base64-encoded internally for safe JSON transport)\n\nEXAMPLE:\n{\n  "path": "game.ReplicatedStorage.Script",\n  "old_string": "local x = 1",\n  "new_string": "local x = 999"\n}`,
+        description: `Precise script editing with string replacement.
+
+⚠️  MANDATORY: Use readLine() BEFORE editScript() to read target lines.
+
+WORKFLOW:
+1. readLine({path: "Script", startLine: 5, endLine: 10})
+2. Find text you want to change in the output.
+3. editScript({path: "Script", old_string: "old text", new_string: "new text"})
+4. readLine() again to verify changes.
+
+RULES:
+- CRITICAL: old_string must match the file content BIT-BY-BIT. If readLine returns 4 spaces indentation, old_string MUST have 4 spaces. Do not trim or format.
+- old_string must be from the readLine output (WITHOUT "Line X: " prefix).
+- Use editScript for <50% changes, modifyObject for >50% rewrites.
+
+BAD USAGE EXAMPLE:
+- Task: Change "local x = 1"
+- Action: editScript(old_string="local x=1") -> ❌ FAIL (Missing spaces/indentation)
+
+GOOD USAGE EXAMPLE:
+- Step 1: readLine returns "    local x = 1"
+- Step 2: editScript(old_string="    local x = 1", new_string="    local x = 100") -> ✅ SUCCESS`,
         inputSchema: {
           type: 'object',
           properties: {
-            path: {
-              type: 'string',
-              description: 'Path to the script or object. Examples: "game.ReplicatedStorage.Script", "workspace.Part.Script"',
-            },
-            old_string: {
-              type: 'string',
-              description: 'EXACT text to replace (copy from readLine output WITHOUT "Line X: " prefix). CRITICAL: Must match content BIT-BY-BIT including exact indentation. Do not trim. (Base64-encoded internally)',
-            },
-            new_string: {
-              type: 'string',
-              description: 'Replacement text. (Base64-encoded internally)',
-            },
-            replace_all: {
-              type: 'boolean',
-              description: 'If true, replace ALL occurrences of old_string. If false (default), old_string must be unique or an error is thrown.',
-            },
+            path: { type: 'string', description: 'Path to the script or object.' },
+            old_string: { type: 'string', description: 'EXACT text to replace.' },
+            new_string: { type: 'string', description: 'Replacement text.' },
+            replace_all: { type: 'boolean', description: 'If true, replace ALL occurrences.' },
           },
           required: ['path', 'old_string', 'new_string'],
         },
       },
       {
         name: 'convertScript',
-        description: 'Convert a script to another type (e.g., Script -> LocalScript) while preserving source, children, and attributes.',
+        description: 'Convert a script to another type (e.g., Script -> LocalScript) while preserving source, children, and attributes.\nUseful when refactoring server-side logic to client-side or vice versa.',
         inputSchema: {
           type: 'object',
           properties: {
-            path: {
-              type: 'string',
-              description: 'Path to the script to convert. Example: "game.ServerScriptService.MyScript"',
-            },
-            targetType: {
-              type: 'string',
-              description: 'Target class name. Must be one of: "Script", "LocalScript", "ModuleScript".',
-              enum: ['Script', 'LocalScript', 'ModuleScript']
-            },
+            path: { type: 'string', description: 'Path to the script to convert.' },
+            targetType: { type: 'string', enum: ['Script', 'LocalScript', 'ModuleScript'], description: 'Target class name.' },
           },
           required: ['path', 'targetType'],
         },
       },
       {
         name: 'readLine',
-        description: `Read specific lines from a script or object source. WORKFLOW: Use readLine() first to analyze the current code, then make changes with deleteLines()/insertLines() or modifyObject(), then use readLine() again to verify the changes worked correctly.\n\nEXAMPLES:\n1. Read a single line:\n{\n  "path": "game.ReplicatedStorage.Script",\n  "lineNumber": 10\n}\n\n2. Read a range of lines:\n{\n  "path": "game.ReplicatedStorage.Script",\n  "startLine": 10,\n  "endLine": 20\n}`,
+        description: `Read specific lines from a script or object source.
+
+WORKFLOW:
+Use readLine() FIRST to analyze the current code, then make changes with deleteLines()/insertLines() or modifyObject(), then use readLine() again to VERIFY the changes worked correctly.
+
+EXAMPLES:
+1. Read a single line: { "path": "game.ReplicatedStorage.Script", "lineNumber": 10 }
+2. Read a range: { "path": "game.ReplicatedStorage.Script", "startLine": 10, "endLine": 20 }`,
         inputSchema: {
           type: 'object',
           properties: {
-            path: {
-              type: 'string',
-              description: 'Path to the script or object. Examples: "game.ReplicatedStorage.Script"',
-            },
-            lineNumber: {
-              type: 'number',
-              description: 'Single line number to read (alternative to startLine/endLine)',
-            },
-            startLine: {
-              type: 'number',
-              description: 'Start line number for range reading (use with endLine)',
-            },
-            endLine: {
-              type: 'number',
-              description: 'End line number for range reading (use with startLine)',
-            },
+            path: { type: 'string', description: 'Path to the script or object.' },
+            lineNumber: { type: 'number', description: 'Single line number to read.' },
+            startLine: { type: 'number', description: 'Start line number for range reading.' },
+            endLine: { type: 'number', description: 'End line number for range reading.' },
           },
           required: ['path'],
         },
       },
       {
         name: 'deleteLines',
-        description: 'Delete a range of lines from a script or object source. WORKFLOW: Use readLine() first to identify the lines to delete, then deleteLines(), then readLine() again to verify the deletion worked correctly.',
+        description: `Delete a range of lines from a script or object source.
+
+WORKFLOW:
+Use readLine() first to identify the lines to delete, then deleteLines(), then readLine() again to verify the deletion worked correctly.`,
         inputSchema: {
           type: 'object',
           properties: {
-            path: {
-              type: 'string',
-              description: 'Path to the script or object. Examples: "game.ReplicatedStorage.Script"',
-            },
-            startLine: {
-              type: 'number',
-              description: 'Starting line number to delete from',
-            },
-            endLine: {
-              type: 'number',
-              description: 'Ending line number to delete to',
-            },
+            path: { type: 'string', description: 'Path to the script or object.' },
+            startLine: { type: 'number', description: 'Starting line number to delete from' },
+            endLine: { type: 'number', description: 'Ending line number to delete to' },
           },
           required: ['path', 'startLine', 'endLine'],
         },
       },
       {
         name: 'insertLines',
-        description: 'Insert new lines at a specific position in a script or object source. The lines are inserted AT the specified lineNumber position, pushing the original line at that position down (like pressing Enter in an editor). BEHAVIOR: insertLines(lineNumber=2) inserts new lines at position 2, moving the original line 2 down to become line 3 (or later, depending on how many lines are inserted). WORKFLOW: Use readLine() first to identify the insertion point, then insertLines(), then readLine() again to verify the insertion worked correctly.',
+        description: `Insert new lines at a specific position in a script or object source.
+
+BEHAVIOR:
+insertLines(lineNumber=2) inserts new lines AT position 2. The original line 2 is pushed down to become line 3 (or later).
+
+WORKFLOW:
+Use readLine() first to identify the insertion point, then insertLines(), then readLine() again to verify.`,
         inputSchema: {
           type: 'object',
           properties: {
-            path: {
-              type: 'string',
-              description: 'Path to the script or object. Examples: "game.ReplicatedStorage.Script"',
-            },
-            lineNumber: {
-              type: 'number',
-              description: 'Line number where to insert the new lines. The original line at this position will be pushed down. Example: lineNumber=2 means the new lines will be inserted at position 2, and the original line 2 becomes line 3 (or later).',
-            },
-            lines: {
-              type: 'array',
-              description: 'Array of lines to insert. ALL characters in each line are preserved exactly as provided. (Each line Base64-encoded internally for safe JSON transport)',
-              items: {
-                type: 'string',
-              },
-            },
+            path: { type: 'string', description: 'Path to the script or object.' },
+            lineNumber: { type: 'number', description: 'Line number where to insert the new lines.' },
+            lines: { type: 'array', items: { type: 'string' }, description: 'Array of lines to insert.' },
           },
           required: ['path', 'lineNumber', 'lines'],
         },
       },
       {
         name: 'getScriptInfo',
-        description: 'Get information about a script or object (line count, etc.).',
+        description: 'Get information about a script or object (line count, etc.).\nUseful for quick analysis before reading or editing.',
         inputSchema: {
           type: 'object',
           properties: {
-            path: {
-              type: 'string',
-              description: 'Path to the script or object. Examples: "game.ReplicatedStorage.Script"',
-            },
+            path: { type: 'string', description: 'Path to the script or object.' },
           },
           required: ['path'],
         },
       },
       {
         name: 'scriptSearch',
-        description: 'Search for text across all scripts in the game. WORKFLOW: Use scriptSearch() to find code locations, then readLine() to examine the context, then use modifyObject() or deleteLines()/insertLines() to make changes, then readLine() to verify.',
+        description: `Search for text across all scripts in the game.
+
+WORKFLOW:
+1. Use scriptSearch() to find code locations.
+2. Use readLine() to examine the context around the match.
+3. Use editScript() or modifyObject() to make changes.
+4. Use readLine() to verify.`,
         inputSchema: {
           type: 'object',
           properties: {
-            searchText: {
-              type: 'string',
-              description: 'Text to search for in scripts',
-            },
-            caseSensitive: {
-              type: 'boolean',
-              description: 'Whether the search should be case sensitive (default: false)',
-            },
-            maxResults: {
-              type: 'number',
-              description: 'Maximum number of results to return (default: 50)',
-            },
+            searchText: { type: 'string', description: 'Text to search for in scripts.' },
+            caseSensitive: { type: 'boolean', description: 'Whether the search should be case sensitive (default: false)' },
+            maxResults: { type: 'number', description: 'Maximum number of results to return (default: 50)' },
           },
           required: ['searchText'],
         },
       },
       {
         name: 'scriptSearchOnly',
-        description: 'Search for text in a specific script without replacing (read-only search). WORKFLOW: Use scriptSearchOnly() to find specific text in one script, then readLine() to examine context, then use modifyObject() or deleteLines()/insertLines() to make changes, then readLine() to verify.',
+        description: `Search for text in a specific script without replacing (read-only search).
+
+WORKFLOW:
+1. Use scriptSearchOnly() to find text within a known script.
+2. Use readLine() to examine the context around the match.
+3. Use editScript() or modifyObject() to make changes.`,
         inputSchema: {
           type: 'object',
           properties: {
-            scriptPath: {
-              type: 'string',
-              description: 'Path to the script to search in. Examples: "game.ReplicatedStorage.Script"',
-            },
-            searchText: {
-              type: 'string',
-              description: 'Text to search for in scripts',
-            },
-            caseSensitive: {
-              type: 'boolean',
-              description: 'Whether the search should be case sensitive (default: false)',
-            },
-            maxResults: {
-              type: 'number',
-              description: 'Maximum number of results to return (default: 50)',
-            },
+            scriptPath: { type: 'string', description: 'Path to the script to search in.' },
+            searchText: { type: 'string', description: 'Text to search for in scripts.' },
+            caseSensitive: { type: 'boolean', description: 'Whether the search should be case sensitive (default: false)' },
+            maxResults: { type: 'number', description: 'Maximum number of results to return (default: 50)' },
           },
           required: ['scriptPath', 'searchText'],
         },
       },
-        {
+      {
         name: 'delete',
-        description: 'Delete a Roblox object entirely.',
+        description: 'Delete a Roblox object entirely.\nWARNING: This action is permanent and cannot be undone via this tool (unless you use undo in Studio).',
         inputSchema: {
           type: 'object',
           properties: {
-            path: {
-              type: 'string',
-              description: 'Path to the Roblox object to delete. Examples: "workspace.Part1", "game.ReplicatedStorage.OldScript"',
-            },
+            path: { type: 'string', description: 'Path to the Roblox object to delete.' },
           },
           required: ['path'],
         },
       },
       {
         name: 'copy',
-        description: 'Copy a Roblox object to a new parent using Instance:Clone().',
+        description: 'Copy a Roblox object to a new parent using Instance:Clone().\nCan optionally rename the copied object.',
         inputSchema: {
           type: 'object',
           properties: {
-            sourcePath: {
-              type: 'string',
-              description: 'Path to the source object to copy. Examples: "workspace.Model1", "game.ReplicatedStorage.Script"',
-            },
-            targetPath: {
-              type: 'string',
-              description: 'Path to the target parent. Examples: "workspace", "game.ReplicatedStorage.Folder"',
-            },
-            newName: {
-              type: 'string',
-              description: 'Optional new name for the copied object. If not provided, keeps original name.',
-            },
+            sourcePath: { type: 'string', description: 'Path to the source object to copy.' },
+            targetPath: { type: 'string', description: 'Path to the target parent.' },
+            newName: { type: 'string', description: 'Optional new name for the copied object.' },
           },
           required: ['sourcePath', 'targetPath'],
         },
       },
       {
         name: 'executeCode',
-        description: 'Execute arbitrary Lua code in Studio OR Play-Test using ModuleScript proxy technique. Creates temporary modules in ServerStorage/ScriptExecutor with timestamp names. Auto-cleanup after 30 modules. Use for complex operations like loops, conditionals, etc. Use context="playtest_server" for server-side or context="playtest_client" for client-side execution.',
+        description: `Execute arbitrary Lua code in Studio OR Play-Test using ModuleScript proxy technique.
+Use this for logic that doesn't persist (e.g., checking game state, temporary debugging).
+
+CONTEXT:
+- "studio": Runs in Edit Mode.
+- "playtest_server": Runs on Server during Play.
+- "playtest_client": Runs on Client during Play.`,
         inputSchema: {
           type: 'object',
           properties: {
-            code: {
-              type: 'string',
-              description: 'Lua code to execute. Example: "for i = 1, 10 do local part = Instance.new(\'Part\') part.Position = Vector3.new(i*2, 0, 0) part.Parent = workspace end"',
-            },
-            context: {
-              type: 'string',
-              enum: ['studio', 'playtest_server', 'playtest_client'],
-              description: 'Where to execute: "studio" (Edit-Modus), "playtest_server" (Server), "playtest_client" (Client). Default: studio',
-            },
+            code: { type: 'string', description: 'Lua code to execute.' },
+            context: { type: 'string', enum: ['studio', 'playtest_server', 'playtest_client'], description: 'Where to execute. Default: studio' },
           },
           required: ['code'],
         },
       },
       {
         name: 'multi',
-        description: 'Execute multiple tool calls sequentially for complex workflows. Unlimited tools per call - no limits! Available tools: tree, create, get, modifyObject, editScript, copy, readLine, deleteLines, insertLines, getScriptInfo, scriptSearch, scriptSearchOnly, delete, executeCode',
+        description: `Execute multiple tool calls sequentially for complex workflows.
+Unlimited tools per call! Use this to chain operations like:
+1. create()
+2. modifyObject()
+3. readLine()
+in a single turn to save time.`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -794,14 +767,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               items: {
                 type: 'object',
                 properties: {
-                  tool: {
-                    type: 'string',
-                    description: 'Tool name to call: "tree", "create", "get", "modifyObject", "editScript", "copy", "readLine", "deleteLines", "insertLines", "getScriptInfo", "scriptSearch", "scriptSearchOnly", "delete", "executeCode"',
-                  },
-                  args: {
-                    type: 'object',
-                    description: 'Arguments for the tool (same as calling the tool directly)',
-                  },
+                  tool: { type: 'string', description: 'Tool name to call' },
+                  args: { type: 'object', description: 'Arguments for the tool' },
                 },
                 required: ['tool', 'args'],
               },
@@ -814,12 +781,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-// ========== TOOL HANDLER HELPER ==========
+// ========== TOOL ARGUMENT PREPARATION ==========
 function prepareToolArgs(tool, args) {
-  // Create deep copy
   const prepared = { ...args };
   
-  // Encode specific parameters for script-related tools
   if (tool === 'create') {
     if (prepared.luaCode) prepared.luaCode = unifiedEncode(prepared.luaCode);
     if (prepared.source) prepared.source = unifiedEncode(prepared.source);
@@ -847,90 +812,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   try {
-    // STUDIO STATUS - Play-Test Status prüfen (MCP Server Logik)
-    if (name === 'studio_status') {
-      const playTestActive = (connectedClients.playtest !== null && connectedClients.playtest.readyState === 1) ||
-                              (connectedClients.playtest_server !== null && connectedClients.playtest_server.readyState === 1);
-      const status = playTestActive ? 'playtest' : 'playtest stop';
-
-      log(`[MCP] studio_status: ${status}`);
-
-      return {
-        content: [{
-          type: 'text',
-          text: status
-        }]
-      };
-    }
-
-    // GET CONSOLE OUTPUT - Read logs from LogService
-    if (name === 'get_console_output') {
-      const context = args.context || 'playtest_server';
-
-      // Check if target client is connected
-      const targetClient = connectedClients[context];
-      if (!targetClient || targetClient.readyState !== 1) {
-        const statusMsg = context === 'playtest_server'
-          ? 'Play-Test Server nicht aktiv.'
-          : context === 'playtest_client'
-            ? 'Play-Test Client nicht aktiv.'
-            : 'Studio Client nicht verbunden.';
-        return {
-          content: [{
-            type: 'text',
-            text: `[ERROR] ${statusMsg}`
-          }]
-        };
-      }
-
-      // Send command to plugin
-      return new Promise((resolve, reject) => {
-        const requestId = crypto.randomUUID();
-
-        const timeout = setTimeout(() => {
-          pendingRequests.delete(requestId);
-          reject(new Error('Timeout: Plugin antwortet nicht'));
-        }, CONFIG.TIMEOUT);
-
-        pendingRequests.set(requestId, {
-          resolve: (result) => {
-            clearTimeout(timeout);
-            pendingRequests.delete(requestId);
-            resolve({
-              content: [{
-                type: 'text',
-                text: result
-              }]
-            });
-          },
-          reject: (error) => {
-            clearTimeout(timeout);
-            pendingRequests.delete(requestId);
-            reject(error);
-          },
-          context: context
-        });
-
-        // Send command to target client
-        const message = {
-          type: 'command',
-          id: requestId,
-          tool: 'getConsoleOutput',
-          params: {
-            limit: args.limit || 50,
-            filter: args.filter || 'all',
-            search: args.search || ''
-          }
-        };
-
-        log(`[MCP] Sending getConsoleOutput to ${context} client`);
-        targetClient.send(JSON.stringify(message));
-      });
-    }
-
-    // GET CONNECTION INFO - Return IP and Port for plugin connection
+    // GET CONNECTION INFO - Lokal (kein Router nötig)
     if (name === 'get_connection_info') {
-      // os already imported at top
       const interfaces = os.networkInterfaces();
       let localIp = 'localhost';
 
@@ -948,86 +831,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           type: 'text',
           text: JSON.stringify({
             ip: localIp,
-            port: 3001,
-            websocket_url: `ws://${localIp}:3001`,
-            localhost_url: 'ws://localhost:3001',
+            port: CONFIG.PLUGIN_PORT,
+            websocket_url: `ws://${localIp}:${CONFIG.PLUGIN_PORT}`,
+            localhost_url: `ws://localhost:${CONFIG.PLUGIN_PORT}`,
+            router_port: CONFIG.ROUTER_PORT,
+            agent_id: AGENT_ID,
             instructions: 'Enter the IP and port in your Roblox plugin settings and click Connect'
           }, null, 2)
         }]
       };
     }
 
-    // PLAYTEST CONTROL - Start/Stop Play-Test
-    if (name === 'playtest_control') {
-      const action = args.action;
-
-      if (!action || !['start', 'stop'].includes(action)) {
-        return {
-          content: [{
-            type: 'text',
-            text: '[ERROR] Ungültige Aktion. Nutze "start" oder "stop"'
-          }]
-        };
-      }
-
-      // START: Send to studio client
-      // STOP: Send to playtest_server client (via MCP routing!)
-      const targetContext = action === 'start' ? 'studio' : 'playtest_server';
-      const targetClient = connectedClients[targetContext];
-
-      if (!targetClient || targetClient.readyState !== 1) {
-        const errorMsg = action === 'start'
-          ? '[ERROR] Studio nicht verbunden. Verbinde zuerst das Plugin im Studio.'
-          : '[ERROR] Play-Test Server nicht aktiv. Starte zuerst einen Play-Test.';
-        return {
-          content: [{
-            type: 'text',
-            text: errorMsg
-          }]
-        };
-      }
-
-      // Send command to target client
-      return new Promise((resolve, reject) => {
-        const requestId = crypto.randomUUID();
-
-        const timeout = setTimeout(() => {
-          pendingRequests.delete(requestId);
-          reject(new Error('Timeout: Plugin antwortet nicht'));
-        }, CONFIG.TIMEOUT);
-
-        pendingRequests.set(requestId, {
-          resolve: (result) => {
-            clearTimeout(timeout);
-            pendingRequests.delete(requestId);
-            resolve({
-              content: [{
-                type: 'text',
-                text: result
-              }]
-            });
-          },
-          reject: (error) => {
-            clearTimeout(timeout);
-            pendingRequests.delete(requestId);
-            reject(error);
-          },
-          context: targetContext
-        });
-
-        const message = {
-          type: 'command',
-          id: requestId,
-          tool: 'playtestControl',
-          params: { action: action }
-        };
-
-        log(`[MCP] Sending playtestControl ${action} to ${targetContext} client`);
-        targetClient.send(JSON.stringify(message));
-      });
+    // ========== HEALTH CHECK - Router Auto-Recovery ==========
+    // Vor jedem Tool-Aufruf prüfen ob Router läuft
+    try {
+      await ensureRouterConnection();
+    } catch (healthError) {
+      log(`[MCP-V2] Health Check fehlgeschlagen: ${healthError.message}`);
+      return {
+        content: [{ type: 'text', text: `Error: ${healthError.message}` }],
+        isError: true,
+      };
     }
 
-// MULTI TOOL
+    // MULTI TOOL
     if (name === 'multi') {
       const { calls } = args;
 
@@ -1038,7 +865,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      log(`[MCP MULTI] Processing ${calls.length} tool calls`);
+      log(`[MCP-V2 MULTI] Processing ${calls.length} tool calls`);
 
       const results = [];
 
@@ -1047,14 +874,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { tool, args: toolArgs } = call;
 
         try {
-          log(`[MCP MULTI] Tool ${i + 1}/${calls.length}: ${tool}`);
+          log(`[MCP-V2 MULTI] Tool ${i + 1}/${calls.length}: ${tool}`);
 
-          // Context extrahieren (default: studio)
           const context = toolArgs.context || 'studio';
           const preparedArgs = prepareToolArgs(tool, toolArgs);
-          delete preparedArgs.context;
+          preparedArgs.context = context;
 
-          const result = await executeToolViaWebSocket(tool, preparedArgs, context);
+          const result = await executeToolViaRouter(tool, preparedArgs);
 
           results.push({
             index: i,
@@ -1063,10 +889,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             output: result
           });
 
-          log(`[MCP MULTI] Tool ${i + 1}: ✅`);
+          log(`[MCP-V2 MULTI] Tool ${i + 1}: ✅`);
 
         } catch (error) {
-          log(`[MCP MULTI] Tool ${i + 1}: ❌ ${error.message}`);
+          log(`[MCP-V2 MULTI] Tool ${i + 1}: ❌ ${error.message}`);
           results.push({
             index: i,
             tool,
@@ -1076,7 +902,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
 
-      // Format combined output
       let output = `=== Multi Tool Results (${results.length} calls) ===\n\n`;
       for (const result of results) {
         output += `[${result.index + 1}] ${result.tool.toUpperCase()}: `;
@@ -1098,20 +923,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     // SINGLE TOOL
-    // Context extrahieren (default: studio)
-    const context = args.context || 'studio';
+    // playtest_control braucht keinen default context - Router setzt es automatisch
+    let context;
+    if (name === 'playtest_control') {
+      context = args.context || null;  // Kein default - Router entscheidet
+    } else {
+      context = args.context || 'studio';
+    }
     const preparedArgs = prepareToolArgs(name, args);
-    // Context nicht an Plugin senden (nur für Routing)
-    delete preparedArgs.context;
-
-    // DEBUG: Log connected clients
-    log(`[MCP DEBUG] Tool: ${name}, Context: ${context}`);
-    log(`[MCP DEBUG] Connected Clients:`);
-    for (const [ctx, client] of Object.entries(connectedClients)) {
-      log(`[MCP DEBUG]   ${ctx}: ${client ? `connected (readyState=${client.readyState})` : 'null'}`);
+    if (context) {
+      preparedArgs.context = context;
     }
 
-    const result = await executeToolViaWebSocket(name, preparedArgs, context);
+    log(`[MCP-V2] Tool: ${name}, Context: ${context || 'auto'}`);
+
+    const result = await executeToolViaRouter(name, preparedArgs);
 
     return {
       content: [{ type: 'text', text: result }],
@@ -1127,28 +953,52 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // ========== CRASH PREVENTION ==========
 process.on('uncaughtException', (error) => {
-  log('[MCP ERROR] Uncaught Exception:', error.message);
-  log('[MCP ERROR] Stack:', error.stack);
-  // Don't exit - try to recover
+  log('[MCP-V2 ERROR] Uncaught Exception:', error.message);
+  log('[MCP-V2 ERROR] Stack:', error.stack);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  log('[MCP ERROR] Unhandled Rejection:', reason);
-  // Don't exit - keep server running
+  log('[MCP-V2 ERROR] Unhandled Rejection:', reason);
 });
 
-// Safe encoding
 if (process.stdin.setDefaultEncoding) process.stdin.setDefaultEncoding('utf8');
 if (process.stdout.setDefaultEncoding) process.stdout.setDefaultEncoding('utf8');
 
-// ========== START MCP SERVER ==========
-log('[MCP WEBSOCKET] Starte MCP Server mit WebSocket...');
+// ========== STARTUP ==========
+async function main() {
+  log('[MCP-V2] Starte MCP Server V2 mit Router-Unterstützung...');
+  
+  try {
+    // 1. Stelle sicher dass Router läuft
+    await ensureRouterRunning();
+    
+    // 2. Kurze Pause damit Router vollständig initialisiert ist
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // 3. Verbinde zum Router
+    await connectToRouter();
+    
+    log('[MCP-V2] ✅ Mit Router verbunden');
+    
+  } catch (error) {
+    log(`[MCP-V2] ⚠️ Router-Verbindung fehlgeschlagen: ${error.message}`);
+    log('[MCP-V2] Setze ohne Router fort (Fallback-Modus)');
+  }
+  
+  // 4. Starte MCP Server (Stdio)
+  log('[MCP-V2] Starte MCP Stdio Server...');
+  
+  const transport = new StdioServerTransport();
+  server.connect(transport).then(() => {
+    log('[MCP-V2] ✅ MCP Server V2 bereit');
+    log(`[MCP-V2] Agent ID: ${AGENT_ID}`);
+    log(`[MCP-V2] Router: ${isConnected ? 'verbunden' : 'nicht verbunden'}`);
+    log(`[MCP-V2] Plugin Port: ${CONFIG.PLUGIN_PORT}`);
+    log(`[MCP-V2] Router Port: ${CONFIG.ROUTER_PORT}`);
+  }).catch((error) => {
+    log('[MCP-V2 ERROR] Server start fehlgeschlagen:', error);
+    process.exit(1);
+  });
+}
 
-const transport = new StdioServerTransport();
-server.connect(transport).then(() => {
-  log('✅ MCP Server bereit (WebSocket Mode)');
-  log(`[MCP WEBSOCKET] Plugin verbinden zu: ws://localhost:${CONFIG.WEBSOCKET_PORT}`);
-}).catch((error) => {
-  log('[MCP ERROR] Server start fehlgeschlagen:', error);
-  process.exit(1);
-});
+main();

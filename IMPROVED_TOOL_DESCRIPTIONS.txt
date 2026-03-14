@@ -1,0 +1,245 @@
+=============================================================================
+ROBLOX STUDIO MCP - IMPROVED TOOL DESCRIPTIONS & WORKFLOW RULES
+=============================================================================
+These descriptions are optimized to force the AI agent to use efficient,
+safe editing workflows instead of destructive overwrites.
+=============================================================================
+
+-----------------------------------------------------------------------------
+TOOL: modifyObject
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Modify an existing Roblox object (properties, source, attributes).
+
+CRITICAL - SCRIPT SOURCE EDITING RULES:
+⚠️  Use modifyObject to change "source" parameter ONLY when replacing MORE THAN 50% of the script.
+⚠️  For small changes (single lines, functions, variables), ALWAYS use editScript instead.
+⚠️  modifyObject replaces the ENTIRE script source - all existing code is permanently lost!
+
+WHEN TO USE modifyObject with source parameter:
+✅ Complete script rewrite (creating new script from scratch).
+✅ Changing more than 50% of existing code.
+✅ Initial script content creation.
+
+BAD USAGE EXAMPLE (DO NOT DO THIS):
+- Task: "Change health to 200"
+- Action: modifyObject(source="...entire 500 lines of code just to change one number...") -> ❌ WASTEFUL & DANGEROUS
+
+GOOD USAGE EXAMPLE:
+- Task: "Rewrite the entire movement system"
+- Action: modifyObject(source="...new complete code...") -> ✅ CORRECT
+
+-----------------------------------------------------------------------------
+TOOL: editScript
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Precise script editing with string replacement.
+
+⚠️  MANDATORY: Use readLine() BEFORE editScript() to read target lines.
+
+WORKFLOW:
+1. readLine({path: "Script", startLine: 5, endLine: 10})
+2. Find text you want to change in the output.
+3. editScript({path: "Script", old_string: "old text", new_string: "new text"})
+4. readLine() again to verify changes.
+
+RULES:
+- CRITICAL: old_string must match the file content BIT-BY-BIT. If readLine returns 4 spaces indentation, old_string MUST have 4 spaces. Do not trim or format.
+- old_string must be from the readLine output (WITHOUT "Line X: " prefix).
+- Use editScript for <50% changes, modifyObject for >50% rewrites.
+
+BAD USAGE EXAMPLE:
+- Task: Change "local x = 1"
+- Action: editScript(old_string="local x=1") -> ❌ FAIL (Missing spaces/indentation)
+
+GOOD USAGE EXAMPLE:
+- Step 1: readLine returns "    local x = 1"
+- Step 2: editScript(old_string="    local x = 1", new_string="    local x = 100") -> ✅ SUCCESS
+
+-----------------------------------------------------------------------------
+TOOL: create
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Create a new Roblox object (Part, Script, Model, etc.).
+Supports batch creation with loop variables.
+
+LUA CODE RULES:
+- The code runs in a sandbox where 'obj' is the newly created instance.
+- You MUST use 'obj' to set properties. Example: "obj.Name = 'Test' obj.Transparency = 0.5" (NOT just "Transparency = 0.5").
+- FOR SCRIPTS: If creating a Script/LocalScript via luaCode, set the source code using "obj.Source".
+  Example: "obj.Source = 'print(\"Hello World\")'"
+
+TIPS:
+- Use "count" and "loopVars" to create multiple objects in ONE call.
+
+GOOD USAGE EXAMPLE (Batch):
+- create(count=10, loopVars={"i": {"start":1, "step":1}}, luaCode="obj.Name = 'Part_'..i obj.Position = Vector3.new(i*2, 0, 0)")
+
+-----------------------------------------------------------------------------
+TOOL: playtest_control
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Starts or stops a Play-Test simulation.
+Uses plugin:StartSimulation() and plugin:StopSimulation().
+Only available in Studio context (Edit Mode).
+
+DEBUGGING WORKFLOW (TEST-DRIVEN DEVELOPMENT):
+1. Make changes to scripts (editScript/modifyObject).
+2. Call playtest_control(action="start").
+3. WAITING: The game needs a moment to start. Logs might not appear immediately.
+4. In the NEXT turn (or after a delay): Call get_console_output() to check for errors.
+5. Call playtest_control(action="stop") to fix bugs.
+
+-----------------------------------------------------------------------------
+TOOL: get_console_output
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Reads Console Output (Logs) from the game via LogService.
+Shows logs since session start. Works in Studio AND Play-Test.
+
+BEST PRACTICES:
+- Call this AFTER playtest_control(action="start") to verify your code.
+- Use filter='error' to quickly find bugs.
+- Use filter='print' to see your debug messages.
+- NOTE: If you just started a Play-Test, wait a moment before calling this to ensure scripts have run and errors are caught.
+
+-----------------------------------------------------------------------------
+TOOL: readLine
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Read specific lines from a script or object source.
+
+WORKFLOW:
+Use readLine() FIRST to analyze the current code, then make changes with deleteLines()/insertLines() or modifyObject(), then use readLine() again to VERIFY the changes worked correctly.
+
+EXAMPLES:
+1. Read a single line: { "path": "game.ReplicatedStorage.Script", "lineNumber": 10 }
+2. Read a range: { "path": "game.ReplicatedStorage.Script", "startLine": 10, "endLine": 20 }
+
+-----------------------------------------------------------------------------
+TOOL: scriptSearch
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Search for text across all scripts in the game.
+
+WORKFLOW:
+1. Use scriptSearch() to find code locations.
+2. Use readLine() to examine the context around the match.
+3. Use editScript() or modifyObject() to make changes.
+4. Use readLine() to verify.
+
+-----------------------------------------------------------------------------
+TOOL: scriptSearchOnly
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Search for text in a specific script without replacing (read-only search).
+
+WORKFLOW:
+1. Use scriptSearchOnly() to find text within a known script.
+2. Use readLine() to examine the context around the match.
+3. Use editScript() or modifyObject() to make changes.
+
+-----------------------------------------------------------------------------
+TOOL: insertLines
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Insert new lines at a specific position in a script or object source.
+
+BEHAVIOR:
+insertLines(lineNumber=2) inserts new lines AT position 2. The original line 2 is pushed down to become line 3 (or later).
+
+WORKFLOW:
+Use readLine() first to identify the insertion point, then insertLines(), then readLine() again to verify.
+
+-----------------------------------------------------------------------------
+TOOL: deleteLines
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Delete a range of lines from a script or object source.
+
+WORKFLOW:
+Use readLine() first to identify the lines to delete, then deleteLines(), then readLine() again to verify the deletion worked correctly.
+
+-----------------------------------------------------------------------------
+TOOL: executeCode
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Execute arbitrary Lua code in Studio OR Play-Test using ModuleScript proxy technique.
+Use this for logic that doesn't persist (e.g., checking game state, temporary debugging).
+
+CONTEXT:
+- "studio": Runs in Edit Mode.
+- "playtest_server": Runs on Server during Play.
+- "playtest_client": Runs on Client during Play.
+
+-----------------------------------------------------------------------------
+TOOL: tree
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Get the hierarchy tree of any Roblox object.
+Use "depth" and "maxItems" to limit the output and save context window space.
+
+GOOD USAGE:
+- tree(path="workspace", depth=2, maxItems=20) -> ✅ EFFICIENT
+- tree(path="workspace", depth="all") -> ❌ CAUTION (Might be too large)
+
+-----------------------------------------------------------------------------
+TOOL: studio_status
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Checks the current status of the Roblox Studio session.
+Returns "playtest" if a simulation is active, or "playtest stop" if in edit mode.
+Useful for checking if you are in the correct mode before executing context-sensitive commands.
+
+-----------------------------------------------------------------------------
+TOOL: get_connection_info
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Get the local IP address and WebSocket port for connecting the Roblox plugin.
+Use this to tell the user what IP and port to enter in the Roblox plugin settings.
+
+-----------------------------------------------------------------------------
+TOOL: get
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Read properties and attributes from a Roblox object.
+Returns the values of the requested properties (e.g., Size, Position, Color).
+
+-----------------------------------------------------------------------------
+TOOL: convertScript
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Convert a script to another type (e.g., Script -> LocalScript) while preserving source, children, and attributes.
+Useful when refactoring server-side logic to client-side or vice versa.
+
+-----------------------------------------------------------------------------
+TOOL: getScriptInfo
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Get meta-information about a script or object, such as line count.
+Useful for quick analysis before reading or editing.
+
+-----------------------------------------------------------------------------
+TOOL: delete
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Delete a Roblox object entirely.
+WARNING: This action is permanent and cannot be undone via this tool (unless you use undo in Studio).
+
+-----------------------------------------------------------------------------
+TOOL: copy
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Copy a Roblox object to a new parent using Instance:Clone().
+Can optionally rename the copied object.
+
+-----------------------------------------------------------------------------
+TOOL: multi
+-----------------------------------------------------------------------------
+IMPROVED DESCRIPTION:
+Execute multiple tool calls sequentially for complex workflows.
+Unlimited tools per call! Use this to chain operations like:
+1. create()
+2. modifyObject()
+3. readLine()
+in a single turn to save time.

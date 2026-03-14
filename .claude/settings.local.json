@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__roblox-studio__playtest_control"
+    ]
+  }
+}

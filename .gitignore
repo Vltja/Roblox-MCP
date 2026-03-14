@@ -12,3 +12,4 @@ logs/
 # Development files
 *.rar
 .DS_Store
+.npmrc

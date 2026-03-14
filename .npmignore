@@ -1,12 +1,7 @@
-# Plugin code stays private - NOT published to npm
 neue-plugin-architektur/
-roblox mcp plugin/
-
-# Development files
+node_modules/
 logs/
+.claude/
 *.log
-*.rar
-.gitignore
-mcpConfig.bat
-
-# Keep only the MCP server
+.DS_Store
+IMPROVED_TOOL_DESCRIPTIONS.txt
