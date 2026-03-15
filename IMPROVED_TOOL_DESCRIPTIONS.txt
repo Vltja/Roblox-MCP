@@ -63,18 +63,57 @@ IMPROVED DESCRIPTION:
 Create a new Roblox object (Part, Script, Model, etc.).
 Supports batch creation with loop variables.
 
-LUA CODE RULES:
-- The code runs in a sandbox where 'obj' is the newly created instance.
-- You MUST use 'obj' to set properties. Example: "obj.Name = 'Test' obj.Transparency = 0.5" (NOT just "Transparency = 0.5").
-- FOR SCRIPTS: If creating a Script/LocalScript via luaCode, set the source code using "obj.Source".
-  Example: "obj.Source = 'print(\"Hello World\")'"
+---
+⚠️ CRITICAL RULES - READ BEFORE USING:
 
-TIPS:
-- Use "count" and "loopVars" to create multiple objects in ONE call.
+## ❌ WRONG - DO NOT DO THIS:
 
-GOOD USAGE EXAMPLE (Batch):
-- create(count=10, loopVars={"i": {"start":1, "step":1}}, luaCode="obj.Name = 'Part_'..i obj.Position = Vector3.new(i*2, 0, 0)")
+# Creating a Script with luaCode directly (WRONG!)
+{
+  "className": "Script",
+  "luaCode": "print('Hello World')"  ← ERROR: This won't set the script source!
+}
 
+# Setting properties without 'obj' prefix (WRONG!)
+{
+  "luaCode": "Transparency = 0.5"  ← ERROR: 'obj' is missing!
+}
+
+---
+## ✅ CORRECT - DO THIS INSTEAD:
+
+# Option A: Use 'source' parameter for scripts (RECOMMENDED)
+{
+  "className": "Script",
+  "source": "print('Hello World')"  ← Clean and simple!
+}
+
+# Option B: If you MUST use luaCode for scripts, wrap with obj.Source
+{
+  "className": "Script",
+  "luaCode": "obj.Source = 'print("Hello World")'"  ← Works but verbose
+}
+
+# For Parts/Models: Always use 'obj' prefix
+{
+  "className": "Part",
+  "luaCode": "obj.Transparency = 0.5 obj.Size = Vector3.new(4,4,4)"  ← CORRECT!
+}
+
+---
+## 📌 KEY POINTS:
+
+1. 'obj' is the created instance - ALWAYS use it to set properties
+2. For Scripts: Prefer 'source' parameter over luaCode
+3. Use 'count' + 'loopVars' for batch creation
+
+## 📦 BATCH EXAMPLE:
+{
+  "className": "Part",
+  "count": 5,
+  "loopVars": {"i": {"start": 1, "step": 1}},
+  "luaCode": "obj.Name = 'Part_'..i obj.Position = Vector3.new(i*4, 0, 0)"
+}
 -----------------------------------------------------------------------------
 TOOL: playtest_control
 -----------------------------------------------------------------------------
